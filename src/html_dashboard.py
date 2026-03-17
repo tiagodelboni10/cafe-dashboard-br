@@ -301,15 +301,23 @@ def _commodity_row(commodities: dict) -> str:
     return f'<div class="row" style="gap:12px; flex-wrap:wrap">{items}</div>'
 
 
-def _spread_card(spread: dict) -> str:
+def _spread_card(spread: dict, spread_brl: dict | None = None) -> str:
     if not spread:
         return "<p class='muted'>Spread indisponivel</p>"
+    brl_row = ""
+    if spread_brl:
+        brl_row = f'''<div class="row" style="gap:24px; margin:12px 0; padding:12px; background:#16213e; border-radius:8px">
+            <div><div class="muted small">Arabica (R$/saca)</div><div class="med-num" style="color:#26a69a">R$ {spread_brl.get("arabica_brl_saca",0):,.2f}</div></div>
+            <div><div class="muted small">Robusta (R$/saca)</div><div class="med-num" style="color:#ffa726">R$ {spread_brl.get("robusta_brl_saca",0):,.2f}</div></div>
+            <div><div class="muted small">Spread (R$/saca)</div><div class="med-num">R$ {spread_brl.get("spread_brl_saca",0):,.2f}</div></div>
+        </div>'''
     return f'''<div class="card">
         <h4>Spread Arabica / Robusta</h4>
+        {brl_row}
         <div class="row" style="gap:24px; margin:12px 0">
             <div><div class="muted small">Arabica (USD/lb)</div><div class="med-num">{spread.get("arabica_usd_lb",0):.4f}</div></div>
             <div><div class="muted small">Robusta (USD/lb)</div><div class="med-num">{spread.get("robusta_usd_lb",0):.4f}</div></div>
-            <div><div class="muted small">Spread</div><div class="med-num">{spread.get("spread_usd_lb",0):.4f}</div></div>
+            <div><div class="muted small">Spread (USD/lb)</div><div class="med-num">{spread.get("spread_usd_lb",0):.4f}</div></div>
             <div><div class="muted small">Ratio</div><div class="med-num">{spread.get("ratio",0):.2f}x</div></div>
         </div>
         <div class="muted">{spread.get("signal","")}</div></div>'''
@@ -474,7 +482,6 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 
     # ── Build charts ──
     print("Gerando graficos...")
-    arabica_chart = build_price_chart(arabica_tech, "Arabica")
     usdbrl_chart = build_usdbrl_chart(usdbrl_hist)
     weather_chart = build_weather_chart(weather)
     season_chart = build_season_chart(season)
@@ -486,6 +493,61 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
 
+    # ── Conversão para BRL/saca 60kg ──
+    usd_rate = usdbrl.get("price", 5.20) or 5.20
+
+    def to_brl_saca(price_info: dict, coffee_type: str) -> dict:
+        """Converte preço para BRL por saca de 60kg."""
+        p = price_info.get("price", 0)
+        if not p:
+            return price_info
+        info = dict(price_info)
+        if coffee_type == "arabica":
+            # Arábica: centavos USD/lb → USD/saca (1 saca=60kg=132.277 lb) → BRL/saca
+            factor = 132.277 / 100 * usd_rate
+        else:
+            # Robusta: USD/ton → USD/saca (1 saca=60kg → 60/1000 ton) → BRL/saca
+            factor = 60 / 1000 * usd_rate
+        info["price"] = round(p * factor, 2)
+        info["change"] = round(info.get("change", 0) * factor, 2)
+        h52 = info.get("high_52w", 0)
+        l52 = info.get("low_52w", 0)
+        if h52:
+            info["high_52w"] = round(h52 * factor, 2)
+        if l52:
+            info["low_52w"] = round(l52 * factor, 2)
+        info["currency"] = "R$"
+        info["unit"] = "saca 60kg"
+        return info
+
+    arabica_brl = to_brl_saca(arabica_price, "arabica")
+    robusta_brl = to_brl_saca(robusta_price, "robusta")
+
+    # Converter historico Arabica para BRL/saca no grafico
+    if not arabica_tech.empty and "Close" in arabica_tech.columns:
+        brl_tech = arabica_tech.copy()
+        brl_factor = 132.277 / 100 * usd_rate
+        for col in ["Open", "High", "Low", "Close", "SMA_20", "SMA_50",
+                     "EMA_12", "EMA_26", "BB_Mid", "BB_Upper", "BB_Lower"]:
+            if col in brl_tech.columns:
+                brl_tech[col] = brl_tech[col] * brl_factor
+        # MACD e derivados também
+        for col in ["MACD", "MACD_Signal", "MACD_Hist"]:
+            if col in brl_tech.columns:
+                brl_tech[col] = brl_tech[col] * brl_factor
+        arabica_chart = build_price_chart(brl_tech, "Arabica (R$/saca 60kg)")
+    else:
+        arabica_chart = build_price_chart(arabica_tech, "Arabica")
+
+    # Spread em BRL/saca
+    spread_brl = None
+    if spread:
+        spread_brl = dict(spread)
+        spread_brl["arabica_brl_saca"] = round(arabica_brl.get("price", 0), 2)
+        spread_brl["robusta_brl_saca"] = round(robusta_brl.get("price", 0), 2)
+        spread_brl["spread_brl_saca"] = round(
+            arabica_brl.get("price", 0) - robusta_brl.get("price", 0), 2)
+
     # ── Compose HTML ──
     arabica_signals_html = _signals_table(arabica_technicals.get("signals", []))
     arabica_news_html = _news_list(arabica_sentiment.get("articles", []), "Arabica")
@@ -493,7 +555,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     general_news_html = _news_list(news.get("geral", []), "Geral")
     weather_cards_html = _weather_cards(weather)
     commodity_html = _commodity_row(commodities)
-    spread_html = _spread_card(spread)
+    spread_html = _spread_card(spread, spread_brl)
     season_card_html = _season_card(season)
     ice_cot_html = _ice_cot_card(ice_stocks, cot)
     fert_section_html = _fertilizer_section(fert_data, fert_impact, fert_news)
@@ -584,8 +646,8 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     <!-- PRECOS + DOLAR -->
     <h2 class="sec">&#128200; Precos e Cambio</h2>
     <div class="grid-3">
-        {_price_card("Cafe Arabica (KC) — ICE NY", arabica_price)}
-        {_price_card("Cafe Robusta (RC) — ICE London", robusta_price)}
+        {_price_card("Cafe Arabica — R$/saca 60kg", arabica_brl)}
+        {_price_card("Cafe Robusta (Conilon) — R$/saca 60kg", robusta_brl)}
         {usdbrl_card}
     </div>
 
