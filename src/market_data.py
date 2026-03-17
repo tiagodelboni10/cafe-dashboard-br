@@ -38,8 +38,13 @@ def fetch_coffee_futures(coffee_type: str, period_days: int = HISTORICAL_DAYS) -
 
 
 def _scrape_robusta_price() -> dict:
-    """Busca preço atual do Robusta via Barchart (USD/ton)."""
+    """Busca preço do DIA do Robusta via Barchart (USD/ton).
+
+    Extrai lastPrice do JSON embutido no data-ng-init da página,
+    que contém o preço mais recente (não média).
+    """
     import re
+    import json as _json
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -50,51 +55,81 @@ def _scrape_robusta_price() -> dict:
             headers=headers, timeout=15,
         )
         soup = BeautifulSoup(resp.text, "html.parser")
-        text = soup.get_text()
 
-        # Extrair dados da seção "Price Performance"
-        idx = text.find("Price Performance")
-        if idx < 0:
-            raise ValueError("Secao Price Performance nao encontrada")
-
-        chunk = text[idx:idx + 600]
-        numbers = re.findall(r"[\d,]+\.?\d*", chunk)
-        # numbers[1] = 1-month low (aprox preço atual), numbers[6] = 52-week low, etc.
-
-        # Layout: "1-Month <low> +X% on MM/DD/YY <high> -X% on MM/DD/YY <change> (<pct>%) since ..."
-        #         "52-Week <low> ... <high> ... <change> (<pct>%) since ..."
-
-        def parse_number(s):
-            return float(s.replace(",", ""))
-
-        # Preço atual: primeiro número grande na seção 1-Month
+        # 1) Extrair lastPrice do JSON no data-ng-init (preço do dia)
         price = 0.0
-        m = re.search(r"1-Month\s+([\d,]+)", chunk)
-        if m:
-            price = parse_number(m.group(1))
-
-        # 52-Week: extrair low e high
-        low_52w = 0.0
-        high_52w = 0.0
-        m52 = re.search(
-            r"52-Week\s+([\d,]+)\s+.*?\s+([\d,]+)\s+", chunk
-        )
-        if m52:
-            v1 = parse_number(m52.group(1))
-            v2 = parse_number(m52.group(2))
-            low_52w = min(v1, v2)
-            high_52w = max(v1, v2)
-
-        # Variação do 1-Month: "<change> (<pct>%) since"
         change = 0.0
         change_pct = 0.0
-        m_1m = re.search(
-            r"1-Month.*?([-+][\d,]+)\s+\(([-+]?\d+\.?\d*)%\)\s+since",
-            chunk, re.DOTALL,
-        )
-        if m_1m:
-            change = parse_number(m_1m.group(1))
-            change_pct = float(m_1m.group(2))
+        prev_price = 0.0
+        high_52w = 0.0
+        low_52w = 0.0
+
+        for tag in soup.find_all(True, attrs={"data-ng-init": True}):
+            init_val = tag.get("data-ng-init", "")
+            # JSON com dados do quote: init({"symbol":"RMU25","lastPrice":"4,382s",...})
+            m = re.search(r'init\((\{"symbol".*?\})', init_val, re.DOTALL)
+            if m:
+                # Limpar e parsear
+                raw = m.group(1)
+                try:
+                    data = _json.loads(raw)
+                except _json.JSONDecodeError:
+                    continue
+
+                # lastPrice vem como "4,382s" ou "4,382" — remover letras e vírgulas
+                lp = data.get("lastPrice", "0")
+                lp_clean = re.sub(r"[^\d.]", "", lp.replace(",", ""))
+                if lp_clean:
+                    price = float(lp_clean)
+
+                # priceChange e percentChange
+                pc = data.get("priceChange", "0")
+                if pc not in ("unch", "N/A", "-"):
+                    pc_clean = re.sub(r"[^\d.+-]", "", pc.replace(",", ""))
+                    if pc_clean:
+                        change = float(pc_clean)
+
+                pct = data.get("percentChange", "0")
+                if pct not in ("unch", "N/A", "-"):
+                    pct_clean = re.sub(r"[^\d.+-]", "", pct.replace(",", ""))
+                    if pct_clean:
+                        change_pct = float(pct_clean)
+
+                pp = data.get("previousPrice", "0")
+                pp_clean = re.sub(r"[^\d.]", "", pp.replace(",", ""))
+                if pp_clean:
+                    prev_price = float(pp_clean)
+
+                break
+
+            # JSON com overview: init("RMU25",{...},{...},{"previousPrice":"4,382",...})
+            m2 = re.search(
+                r'init\("RMU25".*?"previousPrice":"([\d,]+)".*?"volume":"([\d,]+)"',
+                init_val,
+            )
+            if m2 and not prev_price:
+                prev_price = float(m2.group(1).replace(",", ""))
+
+        # 2) Se não achou change mas temos prev_price, calcular
+        if price and prev_price and change == 0 and price != prev_price:
+            change = price - prev_price
+            change_pct = (change / prev_price) * 100 if prev_price else 0
+
+        # 3) 52-week via tabela "Last Price / 52-Week High/Low"
+        for tag in soup.find_all("td"):
+            text = tag.get_text(strip=True)
+            next_td = tag.find_next_sibling("td")
+            if not next_td:
+                continue
+            val_text = next_td.get_text(strip=True)
+            val_clean = re.sub(r"[^\d.]", "", val_text.replace(",", ""))
+            if not val_clean:
+                continue
+            val = float(val_clean)
+            if "52-Week High" in text and val > 1000:
+                high_52w = val
+            elif "52-Week Low" in text and val > 1000:
+                low_52w = val
 
         return {
             "price": round(price, 2),
