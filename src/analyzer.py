@@ -134,35 +134,155 @@ def analyze_technicals(tech_df: pd.DataFrame) -> dict:
     return {"signals": signals, "overall": overall, "score": round(score, 1)}
 
 
-def generate_recommendation(sentiment: dict, technicals: dict, price_info: dict) -> dict:
-    """Gera recomendação final combinando sentimento + técnica."""
+def generate_recommendation(
+    sentiment: dict,
+    technicals: dict,
+    price_info: dict,
+    season: dict | None = None,
+    spread: dict | None = None,
+    weather_alerts: list | None = None,
+    ice_stocks: dict | None = None,
+    cot: dict | None = None,
+    coffee_type: str = "arabica",
+) -> dict:
+    """Gera recomendação final combinando todos os indicadores.
+
+    Pesos:
+        30% Técnico
+        20% Sentimento de notícias
+        15% Sazonalidade
+        10% Spread Arábica/Robusta
+        10% Clima (alertas)
+        10% Estoques ICE
+         5% Posição de fundos (COT)
+    """
     sent_score = sentiment.get("score", 0)
     tech_score = technicals.get("score", 0)
 
-    # Peso: 40% sentimento, 60% técnico
-    combined = (sent_score * 0.4 / 100) + (tech_score * 0.6 / 5)
-    combined_normalized = max(-1, min(1, combined))
+    # ---------- score individual de cada pilar (normalizado -1 a +1) ----------
 
-    if combined_normalized > 0.3:
+    # Técnico: score vai de ~ -5 a +5 → normaliza pra -1..+1
+    s_tech = max(-1, min(1, tech_score / 5))
+
+    # Sentimento: score vai de -100 a +100 → normaliza
+    s_sent = max(-1, min(1, sent_score / 100))
+
+    # Sazonalidade
+    s_season = 0.0
+    season_detail = ""
+    if season:
+        pressure = season.get("pressure", "")
+        if "ALTISTA" in pressure:
+            s_season = 0.6
+            season_detail = season.get("pressure_detail", "")
+        elif "BAIXISTA" in pressure:
+            # Se for baixista para o tipo específico ou geral
+            if coffee_type in pressure.lower() or "(" not in pressure:
+                s_season = -0.6
+            else:
+                s_season = -0.2  # pressão baixista mas pra outro tipo
+            season_detail = season.get("pressure_detail", "")
+
+    # Spread
+    s_spread = 0.0
+    spread_detail = ""
+    if spread:
+        ratio = spread.get("ratio", 0)
+        if coffee_type == "arabica":
+            if ratio > 2.5:
+                s_spread = -0.5  # Arábica caro → pressão de queda
+            elif ratio < 1.5:
+                s_spread = 0.5   # Arábica barato vs Robusta → demanda sobe
+        else:  # robusta
+            if ratio > 2.5:
+                s_spread = 0.5   # Robusta barato → demanda por substituição sobe
+            elif ratio < 1.5:
+                s_spread = -0.5  # Robusta caro → pode perder demanda
+        spread_detail = spread.get("signal", "")
+
+    # Clima: alertas de geada/seca → altista; chuva excessiva durante colheita → altista
+    s_weather = 0.0
+    weather_detail = ""
+    if weather_alerts:
+        for alert in weather_alerts:
+            if "GEADA SEVERA" in alert:
+                s_weather += 0.8
+                weather_detail = alert
+            elif "GEADA" in alert:
+                s_weather += 0.5
+                weather_detail = alert
+            elif "SECA" in alert:
+                s_weather += 0.4
+                if not weather_detail:
+                    weather_detail = alert
+            elif "CHUVA EXCESSIVA" in alert:
+                s_weather += 0.3
+                if not weather_detail:
+                    weather_detail = alert
+            elif "CALOR EXTREMO" in alert:
+                s_weather += 0.3
+                if not weather_detail:
+                    weather_detail = alert
+        s_weather = max(-1, min(1, s_weather))
+
+    # Estoques ICE
+    s_ice = 0.0
+    ice_detail = ""
+    if ice_stocks:
+        trend = ice_stocks.get("trend", "")
+        if trend == "queda":
+            s_ice = 0.5  # estoques caindo → menos oferta → altista
+            ice_detail = "Estoques certificados ICE em queda"
+        elif trend == "alta":
+            s_ice = -0.5
+            ice_detail = "Estoques certificados ICE em alta"
+
+    # COT / Fundos
+    s_cot = 0.0
+    cot_detail = ""
+    if cot:
+        pos = cot.get("position", "")
+        if "comprado" in pos or "long" in pos:
+            s_cot = 0.5
+            cot_detail = "Fundos especulativos posicionados na compra"
+        elif "vendido" in pos or "short" in pos:
+            s_cot = -0.5
+            cot_detail = "Fundos especulativos posicionados na venda"
+
+    # ---------- combinar com pesos ----------
+    combined = (
+        s_tech    * 0.30 +
+        s_sent    * 0.20 +
+        s_season  * 0.15 +
+        s_spread  * 0.10 +
+        s_weather * 0.10 +
+        s_ice     * 0.10 +
+        s_cot     * 0.05
+    )
+    combined = max(-1, min(1, combined))
+
+    if combined > 0.2:
         position = "COMPRA"
         direction = "ALTA"
-        confidence = min(abs(combined_normalized) * 100, 95)
+        confidence = min(abs(combined) * 100, 95)
         icon = "🟢"
-    elif combined_normalized < -0.3:
+    elif combined < -0.2:
         position = "VENDA"
         direction = "BAIXA"
-        confidence = min(abs(combined_normalized) * 100, 95)
+        confidence = min(abs(combined) * 100, 95)
         icon = "🔴"
     else:
         position = "NEUTRO"
         direction = "LATERAL"
-        confidence = max(30, 50 - abs(combined_normalized) * 50)
+        confidence = max(25, 50 - abs(combined) * 50)
         icon = "🟡"
 
+    # ---------- fatores ----------
     factors = []
-    if sentiment.get("bullish", 0) > sentiment.get("bearish", 0):
+
+    if s_sent > 0.1:
         factors.append("Sentimento de notícias predominantemente positivo")
-    elif sentiment.get("bearish", 0) > sentiment.get("bullish", 0):
+    elif s_sent < -0.1:
         factors.append("Sentimento de notícias predominantemente negativo")
 
     tech_overall = technicals.get("overall", "NEUTRO")
@@ -171,24 +291,47 @@ def generate_recommendation(sentiment: dict, technicals: dict, price_info: dict)
     elif tech_overall == "BAIXA":
         factors.append("Indicadores técnicos apontando para baixa")
 
+    if season_detail:
+        factors.append(season_detail)
+    if spread_detail:
+        factors.append(spread_detail)
+    if weather_detail:
+        factors.append(weather_detail)
+    if ice_detail:
+        factors.append(ice_detail)
+    if cot_detail:
+        factors.append(cot_detail)
+
     if price_info:
         price = price_info.get("price", 0)
         low_52 = price_info.get("low_52w", 0)
         high_52 = price_info.get("high_52w", 0)
-        if high_52 > 0 and low_52 > 0:
-            range_pct = (price - low_52) / (high_52 - low_52) * 100 if (high_52 - low_52) > 0 else 50
+        if high_52 > 0 and low_52 > 0 and (high_52 - low_52) > 0:
+            range_pct = (price - low_52) / (high_52 - low_52) * 100
             if range_pct > 80:
                 factors.append(f"Preço próximo da máxima de 52 semanas ({range_pct:.0f}% do range)")
             elif range_pct < 20:
                 factors.append(f"Preço próximo da mínima de 52 semanas ({range_pct:.0f}% do range)")
+
+    # breakdown de scores por pilar
+    breakdown = {
+        "Técnico (30%)": round(s_tech, 3),
+        "Sentimento (20%)": round(s_sent, 3),
+        "Sazonalidade (15%)": round(s_season, 3),
+        "Spread (10%)": round(s_spread, 3),
+        "Clima (10%)": round(s_weather, 3),
+        "Estoques ICE (10%)": round(s_ice, 3),
+        "Fundos/COT (5%)": round(s_cot, 3),
+    }
 
     return {
         "position": position,
         "direction": direction,
         "confidence": round(confidence, 1),
         "icon": icon,
-        "combined_score": round(combined_normalized, 3),
+        "combined_score": round(combined, 3),
         "sentiment_score": sent_score,
         "technical_score": tech_score,
         "factors": factors,
+        "breakdown": breakdown,
     }

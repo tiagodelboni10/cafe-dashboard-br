@@ -1,0 +1,409 @@
+"""Dados macroeconômicos e indicadores complementares para o mercado de café."""
+
+import re
+import yfinance as yf
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+
+
+# ---------------------------------------------------------------------------
+# 1. Câmbio USD/BRL
+# ---------------------------------------------------------------------------
+
+def fetch_usdbrl(period_days: int = 180) -> pd.DataFrame:
+    """Busca histórico USD/BRL via yfinance."""
+    try:
+        end = datetime.now()
+        start = end - timedelta(days=period_days)
+        data = yf.download(
+            "USDBRL=X",
+            start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"),
+            progress=False,
+        )
+        if data.empty:
+            return pd.DataFrame()
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        return data.reset_index()
+    except Exception as e:
+        print(f"Erro ao buscar USD/BRL: {e}")
+        return pd.DataFrame()
+
+
+def get_usdbrl_current() -> dict:
+    """Retorna cotação atual do USD/BRL."""
+    try:
+        tk = yf.Ticker("USDBRL=X")
+        hist = tk.history(period="5d")
+        if hist.empty:
+            return {}
+        price = float(hist["Close"].iloc[-1])
+        prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+        change = price - prev
+        change_pct = (change / prev) * 100 if prev else 0
+        return {
+            "price": round(price, 4),
+            "change": round(change, 4),
+            "change_pct": round(change_pct, 2),
+        }
+    except Exception as e:
+        print(f"Erro USD/BRL atual: {e}")
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# 2. Spread Arábica / Robusta
+# ---------------------------------------------------------------------------
+
+def calculate_spread(arabica_price: float, robusta_price: float) -> dict:
+    """Calcula o spread (diferença de preço) entre Arábica e Robusta.
+
+    Arábica é cotado em USX/lb (centavos de dólar por libra).
+    Robusta é cotado em USD/ton.
+    Converte ambos para USD/lb para comparação justa.
+    """
+    if not arabica_price or not robusta_price:
+        return {}
+
+    # Arábica: centavos/lb -> dólares/lb
+    arabica_usd_lb = arabica_price / 100
+
+    # Robusta: USD/ton -> USD/lb (1 ton = 2204.62 lb)
+    robusta_usd_lb = robusta_price / 2204.62
+
+    spread = arabica_usd_lb - robusta_usd_lb
+    ratio = arabica_usd_lb / robusta_usd_lb if robusta_usd_lb > 0 else 0
+
+    # Ratio histórico médio fica entre 1.5 e 2.5
+    if ratio > 2.5:
+        spread_signal = "Arábica muito caro vs Robusta — possível pressão de queda no Arábica"
+    elif ratio > 2.0:
+        spread_signal = "Spread acima da média — favorece substituição por Robusta"
+    elif ratio > 1.5:
+        spread_signal = "Spread na faixa normal"
+    elif ratio > 1.0:
+        spread_signal = "Spread apertado — demanda forte por Arábica ou excesso de Robusta"
+    else:
+        spread_signal = "Spread invertido — situação atípica"
+
+    return {
+        "arabica_usd_lb": round(arabica_usd_lb, 4),
+        "robusta_usd_lb": round(robusta_usd_lb, 4),
+        "spread_usd_lb": round(spread, 4),
+        "ratio": round(ratio, 2),
+        "signal": spread_signal,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 3. Clima nas regiões produtoras
+# ---------------------------------------------------------------------------
+
+# Coordenadas das principais regiões produtoras
+WEATHER_REGIONS = {
+    "Minas Gerais (Arábica BR)": {"lat": -21.25, "lon": -44.99},
+    "São Paulo (Arábica BR)": {"lat": -22.30, "lon": -47.05},
+    "Espírito Santo (Conilon BR)": {"lat": -19.83, "lon": -40.30},
+    "Rondônia (Conilon BR)": {"lat": -10.89, "lon": -61.95},
+    "Vietnam Central Highlands": {"lat": 14.35, "lon": 108.00},
+    "Colombia (Eje Cafetero)": {"lat": 4.81, "lon": -75.68},
+}
+
+
+def fetch_weather(lat: float, lon: float) -> dict:
+    """Busca dados climáticos via Open-Meteo (API gratuita, sem chave)."""
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
+            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max"
+            f"&timezone=auto&forecast_days=7"
+        )
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+
+        current = data.get("current", {})
+        daily = data.get("daily", {})
+
+        # Calcular precipitação acumulada dos próximos 7 dias
+        precip_7d = sum(daily.get("precipitation_sum", []) or [0])
+        max_temps = daily.get("temperature_2m_max", [])
+        min_temps = daily.get("temperature_2m_min", [])
+
+        # Alertas
+        alerts = []
+        if min_temps and min(min_temps) < 3:
+            alerts.append("⚠️ RISCO DE GEADA — mínima prevista abaixo de 3°C")
+        if min_temps and min(min_temps) < 0:
+            alerts.append("🚨 GEADA SEVERA — mínima prevista abaixo de 0°C")
+        if precip_7d < 5:
+            alerts.append("⚠️ SECA — precipitação menor que 5mm nos próximos 7 dias")
+        if precip_7d > 100:
+            alerts.append("⚠️ CHUVA EXCESSIVA — acima de 100mm nos próximos 7 dias")
+        if max_temps and max(max_temps) > 38:
+            alerts.append("⚠️ CALOR EXTREMO — máxima acima de 38°C")
+
+        return {
+            "temp": current.get("temperature_2m", 0),
+            "humidity": current.get("relative_humidity_2m", 0),
+            "precip_now": current.get("precipitation", 0),
+            "wind": current.get("wind_speed_10m", 0),
+            "precip_7d": round(precip_7d, 1),
+            "temp_max_7d": round(max(max_temps), 1) if max_temps else 0,
+            "temp_min_7d": round(min(min_temps), 1) if min_temps else 0,
+            "daily_precip": daily.get("precipitation_sum", []),
+            "daily_dates": daily.get("time", []),
+            "daily_max": max_temps,
+            "daily_min": min_temps,
+            "alerts": alerts,
+        }
+    except Exception as e:
+        print(f"Erro clima ({lat},{lon}): {e}")
+        return {}
+
+
+def fetch_all_weather() -> dict:
+    """Busca clima de todas as regiões produtoras."""
+    results = {}
+    for region, coords in WEATHER_REGIONS.items():
+        results[region] = fetch_weather(coords["lat"], coords["lon"])
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 4. Estoques certificados ICE (via notícias/scraping)
+# ---------------------------------------------------------------------------
+
+def fetch_ice_stocks_news() -> dict:
+    """Busca dados de estoques certificados ICE via Google News."""
+    import feedparser
+
+    feeds = [
+        "https://news.google.com/rss/search?q=ICE+certified+coffee+stocks&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=estoques+certificados+cafe+ICE&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+    ]
+    articles = []
+    seen = set()
+    for feed_url in feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:5]:
+                title = entry.get("title", "")
+                if title.lower() not in seen:
+                    seen.add(title.lower())
+                    published = ""
+                    if hasattr(entry, "published_parsed") and entry.published_parsed:
+                        published = datetime(*entry.published_parsed[:6]).strftime("%Y-%m-%d %H:%M")
+                    articles.append({
+                        "title": title,
+                        "link": entry.get("link", ""),
+                        "published": published,
+                        "summary": BeautifulSoup(
+                            entry.get("summary", ""), "html.parser"
+                        ).get_text()[:200],
+                    })
+        except Exception:
+            pass
+
+    # Análise simples de tendência dos estoques
+    trend = "indefinido"
+    for a in articles:
+        text = (a.get("title", "") + " " + a.get("summary", "")).lower()
+        if any(w in text for w in ["drop", "fell", "decline", "queda", "caiu", "lower", "decrease"]):
+            trend = "queda"
+            break
+        if any(w in text for w in ["rise", "rose", "increase", "alta", "subiu", "higher", "grew"]):
+            trend = "alta"
+            break
+
+    return {
+        "articles": articles[:5],
+        "trend": trend,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 5. COT Report — Posições de fundos (via notícias/scraping)
+# ---------------------------------------------------------------------------
+
+def fetch_cot_news() -> dict:
+    """Busca notícias sobre posições de fundos no mercado de café."""
+    import feedparser
+
+    feeds = [
+        "https://news.google.com/rss/search?q=coffee+futures+speculative+positions+CFTC&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=coffee+COT+report+funds&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=cafe+futuros+posicoes+fundos&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+    ]
+    articles = []
+    seen = set()
+    for feed_url in feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:5]:
+                title = entry.get("title", "")
+                if title.lower() not in seen:
+                    seen.add(title.lower())
+                    published = ""
+                    if hasattr(entry, "published_parsed") and entry.published_parsed:
+                        published = datetime(*entry.published_parsed[:6]).strftime("%Y-%m-%d %H:%M")
+                    articles.append({
+                        "title": title,
+                        "link": entry.get("link", ""),
+                        "published": published,
+                        "summary": BeautifulSoup(
+                            entry.get("summary", ""), "html.parser"
+                        ).get_text()[:200],
+                    })
+        except Exception:
+            pass
+
+    # Análise de posição dos fundos
+    position = "indefinido"
+    for a in articles:
+        text = (a.get("title", "") + " " + a.get("summary", "")).lower()
+        if any(w in text for w in ["net long", "buying", "comprados", "increased long", "bullish position"]):
+            position = "comprado (net long)"
+            break
+        if any(w in text for w in ["net short", "selling", "vendidos", "increased short", "bearish position"]):
+            position = "vendido (net short)"
+            break
+
+    return {
+        "articles": articles[:5],
+        "position": position,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. Calendário de safra / Sazonalidade
+# ---------------------------------------------------------------------------
+
+CROP_CALENDAR = {
+    "Brasil (Arábica)": {
+        "colheita": "Mai–Set",
+        "florada": "Set–Nov",
+        "maturação": "Jan–Abr",
+        "meses_colheita": [5, 6, 7, 8, 9],
+        "impacto": "Maior produtor mundial. Safra entra = pressão vendedora.",
+    },
+    "Brasil (Conilon)": {
+        "colheita": "Abr–Ago",
+        "florada": "Ago–Out",
+        "maturação": "Dez–Mar",
+        "meses_colheita": [4, 5, 6, 7, 8],
+        "impacto": "Maior produtor de Robusta. Safra forte no ES e RO.",
+    },
+    "Vietnam": {
+        "colheita": "Nov–Mar",
+        "florada": "Mar–Mai",
+        "maturação": "Jun–Out",
+        "meses_colheita": [11, 12, 1, 2, 3],
+        "impacto": "2º maior produtor (Robusta). Safra na entressafra do Brasil.",
+    },
+    "Colômbia": {
+        "colheita": "Out–Fev / Abr–Jun",
+        "florada": "Mar / Ago",
+        "maturação": "Jun–Set / Dez–Mar",
+        "meses_colheita": [10, 11, 12, 1, 2, 4, 5, 6],
+        "impacto": "3º em Arábica. Duas safras por ano = oferta mais estável.",
+    },
+    "Indonésia": {
+        "colheita": "Jun–Set",
+        "florada": "Mar–Mai",
+        "maturação": "Set–Mai",
+        "meses_colheita": [6, 7, 8, 9],
+        "impacto": "Robusta de Sumatra. Safra pode afetar preço do Robusta.",
+    },
+    "Etiópia": {
+        "colheita": "Out–Dez",
+        "florada": "Abr–Jun",
+        "maturação": "Jul–Set",
+        "meses_colheita": [10, 11, 12],
+        "impacto": "Berço do café. Arábicas especiais e exóticos.",
+    },
+}
+
+
+def get_current_season_context() -> dict:
+    """Retorna contexto sazonal atual com base no mês."""
+    month = datetime.now().month
+    month_name = [
+        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+        "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+    ][month - 1]
+
+    harvesting = []
+    not_harvesting = []
+    for country, info in CROP_CALENDAR.items():
+        if month in info["meses_colheita"]:
+            harvesting.append(country)
+        else:
+            not_harvesting.append(country)
+
+    # Pressão sazonal
+    br_arabica_harvest = month in CROP_CALENDAR["Brasil (Arábica)"]["meses_colheita"]
+    br_conilon_harvest = month in CROP_CALENDAR["Brasil (Conilon)"]["meses_colheita"]
+    vietnam_harvest = month in CROP_CALENDAR["Vietnam"]["meses_colheita"]
+
+    pressure = "NEUTRA"
+    pressure_detail = ""
+    if br_arabica_harvest and br_conilon_harvest:
+        pressure = "BAIXISTA"
+        pressure_detail = "Brasil em plena colheita de Arábica e Conilon — forte pressão de oferta"
+    elif br_arabica_harvest:
+        pressure = "BAIXISTA (Arábica)"
+        pressure_detail = "Safra brasileira de Arábica — pressão vendedora sobre KC"
+    elif br_conilon_harvest:
+        pressure = "BAIXISTA (Robusta)"
+        pressure_detail = "Safra de Conilon no Brasil — pressão vendedora sobre Robusta"
+    elif vietnam_harvest:
+        pressure = "BAIXISTA (Robusta)"
+        pressure_detail = "Safra do Vietnam entrando — oferta de Robusta aumenta"
+    else:
+        pressure = "ALTISTA"
+        pressure_detail = "Entressafra nos principais produtores — oferta mais restrita"
+
+    return {
+        "month": month,
+        "month_name": month_name,
+        "harvesting": harvesting,
+        "not_harvesting": not_harvesting,
+        "pressure": pressure,
+        "pressure_detail": pressure_detail,
+        "calendar": CROP_CALENDAR,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 7. Commodities correlacionadas
+# ---------------------------------------------------------------------------
+
+def fetch_correlated_commodities() -> dict:
+    """Busca preços de commodities correlacionadas ao café."""
+    tickers = {
+        "Petróleo (WTI)": "CL=F",
+        "Açúcar": "SB=F",
+        "Cacau": "CC=F",
+        "DXY (Índice Dólar)": "DX-Y.NYB",
+    }
+    results = {}
+    for name, ticker in tickers.items():
+        try:
+            hist = yf.Ticker(ticker).history(period="5d")
+            if hist.empty:
+                continue
+            price = float(hist["Close"].iloc[-1])
+            prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+            change_pct = ((price - prev) / prev) * 100 if prev else 0
+            results[name] = {
+                "price": round(price, 2),
+                "change_pct": round(change_pct, 2),
+            }
+        except Exception:
+            pass
+    return results

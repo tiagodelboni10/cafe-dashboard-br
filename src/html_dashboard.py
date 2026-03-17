@@ -1,4 +1,4 @@
-"""Gera dashboard como HTML estático auto-contido."""
+"""Gera dashboard como HTML estático auto-contido com todos os indicadores."""
 
 import json
 from datetime import datetime
@@ -15,246 +15,413 @@ from src.market_data import (
     calculate_technical_indicators,
 )
 from src.analyzer import analyze_sentiment, analyze_technicals, generate_recommendation
+from src.macro_data import (
+    fetch_usdbrl,
+    get_usdbrl_current,
+    calculate_spread,
+    fetch_all_weather,
+    fetch_ice_stocks_news,
+    fetch_cot_news,
+    get_current_season_context,
+    fetch_correlated_commodities,
+    CROP_CALENDAR,
+)
+
+PLOTLY_THEME = dict(
+    template="plotly_dark",
+    paper_bgcolor="#1a1a2e",
+    plot_bgcolor="#16213e",
+)
 
 
-def build_price_chart_html(tech_df: pd.DataFrame, label: str) -> str:
-    """Gera HTML de gráfico de preço com indicadores."""
+# ──────────────────────────────────────────────────────────────────
+# Gráficos Plotly → HTML fragment
+# ──────────────────────────────────────────────────────────────────
+
+def _chart(fig, height=500):
+    fig.update_layout(height=height, **PLOTLY_THEME,
+                      margin=dict(l=50, r=20, t=60, b=30))
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def build_price_chart(tech_df: pd.DataFrame, label: str) -> str:
     if tech_df.empty:
-        return "<p>Dados históricos indisponíveis</p>"
-
-    fig = make_subplots(
-        rows=3, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.05,
-        row_heights=[0.55, 0.25, 0.20],
-        subplot_titles=(f"Preço {label}", "MACD", "RSI"),
-    )
-
-    if all(c in tech_df.columns for c in ["Open", "High", "Low", "Close"]):
-        fig.add_trace(go.Candlestick(
-            x=tech_df["Date"], open=tech_df["Open"],
-            high=tech_df["High"], low=tech_df["Low"],
-            close=tech_df["Close"], name="Preço",
-        ), row=1, col=1)
-
-    if "SMA_20" in tech_df.columns:
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["SMA_20"],
-            name="SMA 20", line=dict(color="orange", width=1),
-        ), row=1, col=1)
-    if "SMA_50" in tech_df.columns:
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["SMA_50"],
-            name="SMA 50", line=dict(color="blue", width=1),
-        ), row=1, col=1)
-
+        return "<p class='muted'>Dados historicos indisponiveis</p>"
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.05, row_heights=[.55, .25, .20],
+                        subplot_titles=(f"Preco {label}", "MACD", "RSI"))
+    if all(c in tech_df.columns for c in ["Open","High","Low","Close"]):
+        fig.add_trace(go.Candlestick(x=tech_df["Date"], open=tech_df["Open"],
+            high=tech_df["High"], low=tech_df["Low"], close=tech_df["Close"],
+            name="Preco"), row=1, col=1)
+    for col, color, name in [("SMA_20","orange","SMA 20"),("SMA_50","#4fc3f7","SMA 50")]:
+        if col in tech_df.columns:
+            fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df[col],
+                name=name, line=dict(color=color, width=1)), row=1, col=1)
     if "BB_Upper" in tech_df.columns:
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["BB_Upper"],
-            name="BB Superior", line=dict(color="gray", width=0.5, dash="dot"),
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["BB_Lower"],
-            name="BB Inferior", line=dict(color="gray", width=0.5, dash="dot"),
-            fill="tonexty", fillcolor="rgba(128,128,128,0.1)",
-        ), row=1, col=1)
-
+        fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df["BB_Upper"],
+            name="BB Sup", line=dict(color="gray", width=.5, dash="dot")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df["BB_Lower"],
+            name="BB Inf", line=dict(color="gray", width=.5, dash="dot"),
+            fill="tonexty", fillcolor="rgba(128,128,128,0.1)"), row=1, col=1)
     if "MACD" in tech_df.columns:
-        colors = ["#26a69a" if v >= 0 else "#ef5350" for v in tech_df["MACD_Hist"].fillna(0)]
-        fig.add_trace(go.Bar(
-            x=tech_df["Date"], y=tech_df["MACD_Hist"],
-            name="MACD Hist", marker_color=colors,
-        ), row=2, col=1)
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["MACD"],
-            name="MACD", line=dict(color="blue", width=1),
-        ), row=2, col=1)
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["MACD_Signal"],
-            name="Sinal", line=dict(color="red", width=1),
-        ), row=2, col=1)
-
+        clrs = ["#26a69a" if v>=0 else "#ef5350" for v in tech_df["MACD_Hist"].fillna(0)]
+        fig.add_trace(go.Bar(x=tech_df["Date"], y=tech_df["MACD_Hist"],
+            name="MACD Hist", marker_color=clrs), row=2, col=1)
+        fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df["MACD"],
+            name="MACD", line=dict(color="blue", width=1)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df["MACD_Signal"],
+            name="Sinal", line=dict(color="red", width=1)), row=2, col=1)
     if "RSI" in tech_df.columns:
-        fig.add_trace(go.Scatter(
-            x=tech_df["Date"], y=tech_df["RSI"],
-            name="RSI", line=dict(color="purple", width=1),
-        ), row=3, col=1)
+        fig.add_trace(go.Scatter(x=tech_df["Date"], y=tech_df["RSI"],
+            name="RSI", line=dict(color="purple", width=1)), row=3, col=1)
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
-
-    fig.update_layout(
-        height=650, xaxis_rangeslider_visible=False,
-        showlegend=True, template="plotly_dark",
-        paper_bgcolor="#1a1a2e", plot_bgcolor="#16213e",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=20, t=60, b=30),
-    )
-    return fig.to_html(full_html=False, include_plotlyjs=False)
+    fig.update_layout(xaxis_rangeslider_visible=False, showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    return _chart(fig, 650)
 
 
-def build_sentiment_gauge_html(sentiment: dict, label: str) -> str:
-    """Gera HTML de gauge de sentimento."""
-    score = sentiment.get("score", 0)
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        title=dict(text=f"Sentimento {label}", font=dict(color="white")),
+def build_gauge(value, title, lo=-100, hi=100):
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=value,
+        title=dict(text=title, font=dict(color="white")),
         number=dict(font=dict(color="white")),
-        gauge=dict(
-            axis=dict(range=[-100, 100], tickfont=dict(color="white")),
-            bar=dict(color="#4fc3f7"),
-            bgcolor="#16213e",
-            steps=[
-                dict(range=[-100, -30], color="#ef5350"),
-                dict(range=[-30, 30], color="#ffa726"),
-                dict(range=[30, 100], color="#26a69a"),
-            ],
-        ),
-    ))
-    fig.update_layout(
-        height=280, paper_bgcolor="#1a1a2e",
-        margin=dict(l=30, r=30, t=60, b=10),
-    )
-    return fig.to_html(full_html=False, include_plotlyjs=False)
+        gauge=dict(axis=dict(range=[lo, hi], tickfont=dict(color="white")),
+            bar=dict(color="#4fc3f7"), bgcolor="#16213e",
+            steps=[dict(range=[lo, lo+(hi-lo)*0.35], color="#ef5350"),
+                   dict(range=[lo+(hi-lo)*0.35, lo+(hi-lo)*0.65], color="#ffa726"),
+                   dict(range=[lo+(hi-lo)*0.65, hi], color="#26a69a")])))
+    return _chart(fig, 260)
 
+
+def build_usdbrl_chart(df: pd.DataFrame) -> str:
+    if df.empty:
+        return "<p class='muted'>Dados USD/BRL indisponiveis</p>"
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"],
+        name="USD/BRL", line=dict(color="#ffa726", width=2), fill="tozeroy",
+        fillcolor="rgba(255,167,38,0.1)"))
+    fig.update_layout(title="Dolar (USD/BRL)", showlegend=False,
+        yaxis_title="R$")
+    return _chart(fig, 350)
+
+
+def build_weather_chart(weather: dict) -> str:
+    if not weather:
+        return "<p class='muted'>Dados climaticos indisponiveis</p>"
+    # Pick a key region to chart
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Precipitacao 7d (mm)", "Temperatura 7d (C)"))
+    colors = ["#4fc3f7", "#26a69a", "#ffa726", "#ef5350", "#ab47bc", "#78909c"]
+    for i, (region, data) in enumerate(weather.items()):
+        if not data or not data.get("daily_dates"):
+            continue
+        c = colors[i % len(colors)]
+        fig.add_trace(go.Bar(x=data["daily_dates"], y=data["daily_precip"],
+            name=region.split("(")[0].strip(), marker_color=c, opacity=0.7), row=1, col=1)
+        fig.add_trace(go.Scatter(x=data["daily_dates"], y=data["daily_max"],
+            name=region.split("(")[0].strip(), line=dict(color=c, width=1),
+            showlegend=False), row=1, col=2)
+    fig.update_layout(barmode="group", showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+    return _chart(fig, 380)
+
+
+def build_breakdown_chart(breakdown: dict, label: str) -> str:
+    names = list(breakdown.keys())
+    values = list(breakdown.values())
+    colors = ["#26a69a" if v >= 0 else "#ef5350" for v in values]
+    fig = go.Figure(go.Bar(x=values, y=names, orientation="h",
+        marker_color=colors, text=[f"{v:+.2f}" for v in values], textposition="auto"))
+    fig.update_layout(title=f"Breakdown — {label}", xaxis=dict(range=[-1, 1]),
+        yaxis=dict(autorange="reversed"))
+    return _chart(fig, 300)
+
+
+def build_season_chart(season: dict) -> str:
+    """Gera gráfico de Gantt simplificado do calendário de safra."""
+    cal = season.get("calendar", CROP_CALENDAR)
+    month_now = season.get("month", datetime.now().month)
+    months = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+
+    fig = go.Figure()
+    countries = list(cal.keys())
+    for i, (country, info) in enumerate(cal.items()):
+        harvest_months = info["meses_colheita"]
+        for m in harvest_months:
+            fig.add_trace(go.Bar(x=[1], y=[country], orientation="h",
+                base=[m - 1], marker_color="#26a69a" if m != month_now else "#ffa726",
+                showlegend=False, hovertext=f"{country}: colheita em {months[m-1]}"))
+    # Mark current month
+    fig.add_vline(x=month_now - 0.5, line_dash="dash", line_color="#ef5350", line_width=2)
+    fig.update_layout(
+        title="Calendario de Safra (verde = colheita, linha vermelha = mes atual)",
+        xaxis=dict(tickmode="array", tickvals=list(range(12)),
+                   ticktext=months, range=[-0.5, 11.5]),
+        yaxis=dict(autorange="reversed"),
+        barmode="stack", showlegend=False,
+    )
+    return _chart(fig, 320)
+
+
+# ──────────────────────────────────────────────────────────────────
+# HTML helpers
+# ──────────────────────────────────────────────────────────────────
+
+def _price_card(label, info):
+    if not info:
+        return f'<div class="card center"><h3>{label}</h3><p class="muted">Dados indisponiveis</p></div>'
+    p = info.get("price", 0)
+    ch = info.get("change", 0)
+    pct = info.get("change_pct", 0)
+    cur = info.get("currency", "USD")
+    color = "#26a69a" if ch >= 0 else "#ef5350"
+    arrow = "&#9650;" if ch >= 0 else "&#9660;"
+    return f'''<div class="card center">
+        <h3>{label}</h3>
+        <div class="big-num">{cur} {p:,.2f}</div>
+        <div style="color:{color}; font-size:1.2em; font-weight:600">
+            {arrow} {abs(ch):,.2f} ({abs(pct):.2f}%)</div>
+        <div class="row muted" style="justify-content:space-between; margin-top:12px">
+            <span>Min 52s: {info.get("low_52w","N/A")}</span>
+            <span>Max 52s: {info.get("high_52w","N/A")}</span></div></div>'''
+
+
+def _rec_card(label, rec):
+    pos = rec.get("position", "NEUTRO")
+    bg = {"COMPRA": "#1b5e20", "VENDA": "#b71c1c"}.get(pos, "#e65100")
+    bar_pct = (rec.get("combined_score", 0) + 1) / 2 * 100
+    factors = "".join(f"<li>{f}</li>" for f in rec.get("factors", []))
+    return f'''<div class="card" style="border-left:4px solid {bg}">
+        <div class="row" style="align-items:center; gap:12px; margin-bottom:12px">
+            <span style="font-size:2em">{rec.get("icon","")}</span>
+            <span style="font-size:1.2em; color:#ccc">{label}</span></div>
+        <div style="display:inline-block; padding:8px 24px; border-radius:8px;
+            font-size:1.5em; font-weight:700; color:#fff; background:{bg}; margin-bottom:12px">{pos}</div>
+        <div class="row muted" style="gap:24px; margin-bottom:8px">
+            <span>Direcao: <strong style="color:#fff">{rec.get("direction","")}</strong></span>
+            <span>Confianca: <strong style="color:#fff">{rec.get("confidence",0):.0f}%</strong></span></div>
+        <div class="bar-bg"><div class="bar-fill" style="width:{bar_pct:.0f}%"></div></div>
+        <div class="muted small">Score combinado: {rec.get("combined_score",0):.3f}</div>
+        {'<ul class="factors">' + factors + '</ul>' if factors else ''}</div>'''
+
+
+def _signals_table(signals):
+    if not signals:
+        return "<p class='muted'>Sinais indisponiveis</p>"
+    rows = ""
+    for ind, sinal, desc in signals:
+        cls = {"ALTA": "bull", "BAIXA": "bear"}.get(sinal, "neut")
+        rows += f'<tr><td>{ind}</td><td class="sg-{cls}">{sinal}</td><td>{desc}</td></tr>'
+    return f'''<table class="tbl">
+        <thead><tr><th>Indicador</th><th>Sinal</th><th>Descricao</th></tr></thead>
+        <tbody>{rows}</tbody></table>'''
+
+
+def _news_list(articles, label):
+    if not articles:
+        return f"<p class='muted'>Nenhuma noticia para {label}</p>"
+    items = ""
+    for a in articles:
+        dot = {"bullish":"🟢","bearish":"🔴"}.get(a.get("sentiment",""), "⚪")
+        items += f'''<div class="news-item">
+            <div class="news-title">{dot} <a href="{a.get("link","#")}" target="_blank">{a.get("title","")}</a></div>
+            <div class="muted small">{a.get("published","N/A")} &middot; {a.get("source","")}</div>
+            <div class="muted small">{a.get("summary","")[:200]}</div></div>'''
+    return items
+
+
+def _weather_cards(weather: dict) -> str:
+    if not weather:
+        return "<p class='muted'>Dados climaticos indisponiveis</p>"
+    cards = ""
+    for region, data in weather.items():
+        if not data:
+            continue
+        alerts_html = ""
+        for alert in data.get("alerts", []):
+            alerts_html += f'<div class="alert">{alert}</div>'
+        cards += f'''<div class="card small-card">
+            <h4>{region}</h4>
+            <div class="row" style="gap:16px; flex-wrap:wrap">
+                <span>🌡️ {data.get("temp",0):.1f}°C</span>
+                <span>💧 {data.get("humidity",0)}%</span>
+                <span>🌧️ 7d: {data.get("precip_7d",0):.0f}mm</span>
+                <span>📊 {data.get("temp_min_7d",0):.0f}–{data.get("temp_max_7d",0):.0f}°C</span>
+            </div>
+            {alerts_html}</div>'''
+    return cards
+
+
+def _commodity_row(commodities: dict) -> str:
+    if not commodities:
+        return ""
+    items = ""
+    for name, info in commodities.items():
+        p = info.get("price", 0)
+        pct = info.get("change_pct", 0)
+        color = "#26a69a" if pct >= 0 else "#ef5350"
+        arrow = "&#9650;" if pct >= 0 else "&#9660;"
+        items += f'''<div class="mini-card">
+            <div class="muted small">{name}</div>
+            <div style="font-size:1.1em; font-weight:600">{p:,.2f}</div>
+            <div style="color:{color}; font-size:0.85em">{arrow} {abs(pct):.2f}%</div></div>'''
+    return f'<div class="row" style="gap:12px; flex-wrap:wrap">{items}</div>'
+
+
+def _spread_card(spread: dict) -> str:
+    if not spread:
+        return "<p class='muted'>Spread indisponivel</p>"
+    return f'''<div class="card">
+        <h4>Spread Arabica / Robusta</h4>
+        <div class="row" style="gap:24px; margin:12px 0">
+            <div><div class="muted small">Arabica (USD/lb)</div><div class="med-num">{spread.get("arabica_usd_lb",0):.4f}</div></div>
+            <div><div class="muted small">Robusta (USD/lb)</div><div class="med-num">{spread.get("robusta_usd_lb",0):.4f}</div></div>
+            <div><div class="muted small">Spread</div><div class="med-num">{spread.get("spread_usd_lb",0):.4f}</div></div>
+            <div><div class="muted small">Ratio</div><div class="med-num">{spread.get("ratio",0):.2f}x</div></div>
+        </div>
+        <div class="muted">{spread.get("signal","")}</div></div>'''
+
+
+def _season_card(season: dict) -> str:
+    pressure = season.get("pressure", "NEUTRA")
+    detail = season.get("pressure_detail", "")
+    harvesting = ", ".join(season.get("harvesting", [])) or "Nenhum"
+    bg = "#1b5e20" if "ALTISTA" in pressure else "#b71c1c" if "BAIXISTA" in pressure else "#e65100"
+    return f'''<div class="card" style="border-left:4px solid {bg}">
+        <h4>Pressao Sazonal: <span style="color:{bg}">{pressure}</span></h4>
+        <div class="muted" style="margin:8px 0">{detail}</div>
+        <div class="muted small">Em colheita agora: {harvesting}</div></div>'''
+
+
+def _ice_cot_card(ice: dict, cot: dict) -> str:
+    ice_trend = ice.get("trend", "indefinido") if ice else "indefinido"
+    cot_pos = cot.get("position", "indefinido") if cot else "indefinido"
+    ice_color = {"queda": "#26a69a", "alta": "#ef5350"}.get(ice_trend, "#ffa726")
+    cot_color = "#26a69a" if "comprado" in cot_pos else "#ef5350" if "vendido" in cot_pos else "#ffa726"
+
+    ice_news = ""
+    for a in (ice or {}).get("articles", [])[:3]:
+        ice_news += f'<div class="news-item"><div class="news-title"><a href="{a.get("link","#")}" target="_blank">{a.get("title","")}</a></div><div class="muted small">{a.get("published","")}</div></div>'
+
+    cot_news = ""
+    for a in (cot or {}).get("articles", [])[:3]:
+        cot_news += f'<div class="news-item"><div class="news-title"><a href="{a.get("link","#")}" target="_blank">{a.get("title","")}</a></div><div class="muted small">{a.get("published","")}</div></div>'
+
+    return f'''<div class="grid-2">
+        <div class="card">
+            <h4>Estoques Certificados ICE</h4>
+            <div style="font-size:1.2em; font-weight:600; color:{ice_color}; margin:8px 0">
+                Tendencia: {ice_trend.upper()}</div>
+            {ice_news}
+        </div>
+        <div class="card">
+            <h4>Posicao de Fundos (COT)</h4>
+            <div style="font-size:1.2em; font-weight:600; color:{cot_color}; margin:8px 0">
+                {cot_pos.upper()}</div>
+            {cot_news}
+        </div></div>'''
+
+
+# ──────────────────────────────────────────────────────────────────
+# Main generator
+# ──────────────────────────────────────────────────────────────────
 
 def generate_html_dashboard(output_path: str = "dashboard.html"):
     """Gera o dashboard completo como arquivo HTML."""
-    print("Buscando precos do mercado...")
+
+    # ── Fetch all data ──
+    print("Buscando precos...")
     arabica_price = get_current_price("arabica")
     robusta_price = get_current_price("robusta")
 
-    print("Buscando dados historicos...")
+    print("Buscando historicos...")
     arabica_hist = fetch_coffee_futures("arabica")
-    robusta_hist = fetch_coffee_futures("robusta")
     arabica_tech = calculate_technical_indicators(arabica_hist)
-    robusta_tech = calculate_technical_indicators(robusta_hist)
+
+    print("Buscando USD/BRL...")
+    usdbrl = get_usdbrl_current()
+    usdbrl_hist = fetch_usdbrl()
 
     print("Buscando noticias...")
     news = get_all_coffee_news()
 
-    print("Analisando sentimento e indicadores...")
+    print("Buscando clima...")
+    weather = fetch_all_weather()
+
+    print("Buscando estoques ICE e COT...")
+    ice_stocks = fetch_ice_stocks_news()
+    cot = fetch_cot_news()
+
+    print("Buscando commodities correlacionadas...")
+    commodities = fetch_correlated_commodities()
+
+    # ── Analyze ──
+    print("Analisando...")
     arabica_sentiment = analyze_sentiment(news.get("arabica", []))
     robusta_sentiment = analyze_sentiment(news.get("robusta", []))
     arabica_technicals = analyze_technicals(arabica_tech)
-    robusta_technicals = analyze_technicals(robusta_tech)
-    arabica_rec = generate_recommendation(arabica_sentiment, arabica_technicals, arabica_price)
-    robusta_rec = generate_recommendation(robusta_sentiment, robusta_technicals, robusta_price)
+    robusta_technicals = analyze_technicals(pd.DataFrame())  # sem dados historicos do robusta
 
+    spread = calculate_spread(
+        arabica_price.get("price", 0),
+        robusta_price.get("price", 0),
+    )
+    season = get_current_season_context()
+
+    # Coletar alertas climáticos
+    all_weather_alerts = []
+    for region, data in weather.items():
+        all_weather_alerts.extend(data.get("alerts", []))
+
+    arabica_rec = generate_recommendation(
+        arabica_sentiment, arabica_technicals, arabica_price,
+        season=season, spread=spread, weather_alerts=all_weather_alerts,
+        ice_stocks=ice_stocks, cot=cot, coffee_type="arabica",
+    )
+    robusta_rec = generate_recommendation(
+        robusta_sentiment, robusta_technicals, robusta_price,
+        season=season, spread=spread, weather_alerts=all_weather_alerts,
+        ice_stocks=ice_stocks, cot=cot, coffee_type="robusta",
+    )
+
+    # ── Build charts ──
     print("Gerando graficos...")
-    arabica_chart = build_price_chart_html(arabica_tech, "Arabica")
-    robusta_chart = build_price_chart_html(robusta_tech, "Robusta")
-    arabica_gauge = build_sentiment_gauge_html(arabica_sentiment, "Arabica")
-    robusta_gauge = build_sentiment_gauge_html(robusta_sentiment, "Robusta")
+    arabica_chart = build_price_chart(arabica_tech, "Arabica")
+    usdbrl_chart = build_usdbrl_chart(usdbrl_hist)
+    weather_chart = build_weather_chart(weather)
+    season_chart = build_season_chart(season)
+    arabica_gauge = build_gauge(arabica_sentiment.get("score", 0), "Sentimento Arabica")
+    robusta_gauge = build_gauge(robusta_sentiment.get("score", 0), "Sentimento Robusta")
+    arabica_breakdown = build_breakdown_chart(arabica_rec.get("breakdown", {}), "Arabica")
+    robusta_breakdown = build_breakdown_chart(robusta_rec.get("breakdown", {}), "Robusta")
 
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    def price_card(label, info):
-        if not info:
-            return f'<div class="price-card"><h3>{label}</h3><p>Dados indisponiveis</p></div>'
-        p = info.get("price", 0)
-        ch = info.get("change", 0)
-        pct = info.get("change_pct", 0)
-        cur = info.get("currency", "USD")
-        color = "#26a69a" if ch >= 0 else "#ef5350"
-        arrow = "&#9650;" if ch >= 0 else "&#9660;"
-        return f'''<div class="price-card">
-            <h3>{label}</h3>
-            <div class="price-value">{cur} {p:.2f}</div>
-            <div class="price-change" style="color:{color}">
-                {arrow} {abs(ch):.2f} ({abs(pct):.2f}%)
-            </div>
-            <div class="price-range">
-                <span>Min 52s: {info.get("low_52w", "N/A")}</span>
-                <span>Max 52s: {info.get("high_52w", "N/A")}</span>
-            </div>
-        </div>'''
+    # ── Compose HTML ──
+    arabica_signals_html = _signals_table(arabica_technicals.get("signals", []))
+    arabica_news_html = _news_list(arabica_sentiment.get("articles", []), "Arabica")
+    robusta_news_html = _news_list(robusta_sentiment.get("articles", []), "Robusta")
+    general_news_html = _news_list(news.get("geral", []), "Geral")
+    weather_cards_html = _weather_cards(weather)
+    commodity_html = _commodity_row(commodities)
+    spread_html = _spread_card(spread)
+    season_card_html = _season_card(season)
+    ice_cot_html = _ice_cot_card(ice_stocks, cot)
 
-    def rec_card(label, rec):
-        icon = rec.get("icon", "")
-        pos = rec.get("position", "NEUTRO")
-        direction = rec.get("direction", "LATERAL")
-        conf = rec.get("confidence", 0)
-        score = rec.get("combined_score", 0)
-        bar_pct = (score + 1) / 2 * 100
+    sent_stats = lambda s: f'''<div class="row center" style="gap:20px; padding:8px">
+        <span class="bull">Alta: {s.get("bullish",0)}</span>
+        <span class="neut">Neutra: {s.get("neutral",0)}</span>
+        <span class="bear">Baixa: {s.get("bearish",0)}</span></div>'''
 
-        if pos == "COMPRA":
-            bg = "#1b5e20"
-        elif pos == "VENDA":
-            bg = "#b71c1c"
-        else:
-            bg = "#e65100"
-
-        factors_html = ""
-        for f in rec.get("factors", []):
-            factors_html += f"<li>{f}</li>"
-
-        return f'''<div class="rec-card" style="border-left: 4px solid {bg}">
-            <div class="rec-header">
-                <span class="rec-icon">{icon}</span>
-                <span class="rec-label">{label}</span>
-            </div>
-            <div class="rec-position" style="background:{bg}">{pos}</div>
-            <div class="rec-details">
-                <span>Direcao: <strong>{direction}</strong></span>
-                <span>Confianca: <strong>{conf:.0f}%</strong></span>
-            </div>
-            <div class="score-bar-container">
-                <div class="score-bar" style="width:{bar_pct:.0f}%"></div>
-            </div>
-            <div class="rec-score">Score: {score:.3f}</div>
-            <div class="rec-scores-row">
-                <div>Sentimento: {rec.get("sentiment_score", 0):.1f}</div>
-                <div>Tecnico: {rec.get("technical_score", 0):.1f}</div>
-            </div>
-            {f'<ul class="rec-factors">{factors_html}</ul>' if factors_html else ''}
-        </div>'''
-
-    def signals_table(signals):
-        if not signals:
-            return "<p>Sinais indisponiveis</p>"
-        rows = ""
-        for ind, sinal, desc in signals:
-            if sinal == "ALTA":
-                cls = "signal-bull"
-            elif sinal == "BAIXA":
-                cls = "signal-bear"
-            else:
-                cls = "signal-neutral"
-            rows += f'<tr><td>{ind}</td><td class="{cls}">{sinal}</td><td>{desc}</td></tr>'
-        return f'''<table class="signals-table">
-            <thead><tr><th>Indicador</th><th>Sinal</th><th>Descricao</th></tr></thead>
-            <tbody>{rows}</tbody></table>'''
-
-    def news_list(articles, label):
-        if not articles:
-            return f"<p>Nenhuma noticia para {label}</p>"
-        items = ""
-        for a in articles:
-            s = a.get("sentiment", "neutral")
-            dot = {"bullish": "🟢", "bearish": "🔴"}.get(s, "⚪")
-            link = a.get("link", "#")
-            items += f'''<div class="news-item">
-                <div class="news-title">{dot} <a href="{link}" target="_blank">{a.get("title","")}</a></div>
-                <div class="news-meta">{a.get("published","N/A")} &middot; {a.get("source","")}</div>
-                <div class="news-summary">{a.get("summary","")[:200]}</div>
-            </div>'''
-        return items
-
-    arabica_signals = signals_table(arabica_technicals.get("signals", []))
-    robusta_signals = signals_table(robusta_technicals.get("signals", []))
-
-    arabica_news_html = news_list(
-        arabica_sentiment.get("articles", news.get("arabica", [])), "Arabica")
-    robusta_news_html = news_list(
-        robusta_sentiment.get("articles", news.get("robusta", [])), "Robusta")
-    general_news_html = news_list(news.get("geral", []), "Geral")
-
-    sent_stats = lambda s: f'''<div class="sent-stats">
-        <span class="stat-bull">Alta: {s.get("bullish",0)}</span>
-        <span class="stat-neut">Neutra: {s.get("neutral",0)}</span>
-        <span class="stat-bear">Baixa: {s.get("bearish",0)}</span>
-    </div>'''
+    # USD/BRL card
+    usd_ch = usdbrl.get("change", 0)
+    usd_color = "#26a69a" if usd_ch >= 0 else "#ef5350"
+    usd_arrow = "&#9650;" if usd_ch >= 0 else "&#9660;"
+    usdbrl_card = f'''<div class="card center">
+        <h3>Dolar (USD/BRL)</h3>
+        <div class="big-num">R$ {usdbrl.get("price",0):.4f}</div>
+        <div style="color:{usd_color}; font-size:1.1em; font-weight:600">
+            {usd_arrow} {abs(usd_ch):.4f} ({abs(usdbrl.get("change_pct",0)):.2f}%)</div></div>'''
 
     html = f'''<!DOCTYPE html>
 <html lang="pt-BR">
@@ -264,193 +431,148 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 <title>Dashboard Mercado de Cafe</title>
 <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: #0f0f23;
-    color: #e0e0e0;
-    line-height: 1.6;
-}}
-.container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
-header {{
-    text-align: center;
-    padding: 30px 20px;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    border-bottom: 2px solid #4fc3f7;
-    margin-bottom: 24px;
-}}
-header h1 {{ font-size: 2em; color: #4fc3f7; }}
-header .subtitle {{ color: #888; margin-top: 8px; font-size: 0.9em; }}
-.grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }}
-.price-card {{
-    background: #1a1a2e; border-radius: 12px; padding: 24px;
-    border: 1px solid #2a2a4a; text-align: center;
-}}
-.price-card h3 {{ color: #4fc3f7; margin-bottom: 12px; font-size: 1.1em; }}
-.price-value {{ font-size: 2.4em; font-weight: 700; color: #fff; }}
-.price-change {{ font-size: 1.2em; margin: 8px 0; font-weight: 600; }}
-.price-range {{ display: flex; justify-content: space-between; color: #888; font-size: 0.85em; margin-top: 12px; }}
-.section-title {{
-    font-size: 1.4em; color: #4fc3f7; margin: 32px 0 16px 0;
-    padding-bottom: 8px; border-bottom: 1px solid #2a2a4a;
-}}
-.rec-card {{
-    background: #1a1a2e; border-radius: 12px; padding: 24px;
-    border: 1px solid #2a2a4a;
-}}
-.rec-header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }}
-.rec-icon {{ font-size: 2em; }}
-.rec-label {{ font-size: 1.2em; color: #ccc; }}
-.rec-position {{
-    display: inline-block; padding: 8px 24px; border-radius: 8px;
-    font-size: 1.5em; font-weight: 700; color: #fff; margin-bottom: 16px;
-}}
-.rec-details {{ display: flex; gap: 24px; margin-bottom: 12px; color: #bbb; }}
-.score-bar-container {{
-    height: 8px; background: #2a2a4a; border-radius: 4px;
-    overflow: hidden; margin-bottom: 8px;
-}}
-.score-bar {{
-    height: 100%;
-    background: linear-gradient(90deg, #ef5350, #ffa726, #26a69a);
-    border-radius: 4px;
-}}
-.rec-score {{ color: #888; font-size: 0.85em; margin-bottom: 8px; }}
-.rec-scores-row {{ display: flex; gap: 24px; color: #aaa; font-size: 0.9em; }}
-.rec-factors {{ margin-top: 12px; padding-left: 20px; color: #aaa; font-size: 0.9em; }}
-.rec-factors li {{ margin-bottom: 4px; }}
-.tabs {{
-    display: flex; gap: 4px; margin-bottom: 0;
-    border-bottom: 2px solid #2a2a4a;
-}}
-.tab-btn {{
-    padding: 12px 28px; cursor: pointer; background: #1a1a2e;
-    border: 1px solid #2a2a4a; border-bottom: none; border-radius: 8px 8px 0 0;
-    color: #888; font-size: 1em; transition: all 0.2s;
-}}
-.tab-btn.active {{ background: #16213e; color: #4fc3f7; border-color: #4fc3f7; }}
-.tab-btn:hover {{ color: #4fc3f7; }}
-.tab-content {{ display: none; padding: 24px 0; }}
-.tab-content.active {{ display: block; }}
-.signals-table {{
-    width: 100%; border-collapse: collapse; margin: 16px 0;
-    background: #1a1a2e; border-radius: 8px; overflow: hidden;
-}}
-.signals-table th {{
-    background: #16213e; padding: 12px 16px; text-align: left;
-    color: #4fc3f7; font-size: 0.9em;
-}}
-.signals-table td {{ padding: 10px 16px; border-bottom: 1px solid #2a2a4a; }}
-.signal-bull {{ color: #26a69a; font-weight: 700; }}
-.signal-bear {{ color: #ef5350; font-weight: 700; }}
-.signal-neutral {{ color: #ffa726; font-weight: 700; }}
-.analysis-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
-.sent-stats {{
-    display: flex; gap: 20px; justify-content: center;
-    padding: 12px; margin-top: 8px;
-}}
-.stat-bull {{ color: #26a69a; font-weight: 600; }}
-.stat-neut {{ color: #ffa726; font-weight: 600; }}
-.stat-bear {{ color: #ef5350; font-weight: 600; }}
-.news-item {{
-    background: #1a1a2e; border-radius: 8px; padding: 16px;
-    margin-bottom: 12px; border: 1px solid #2a2a4a;
-    transition: border-color 0.2s;
-}}
-.news-item:hover {{ border-color: #4fc3f7; }}
-.news-title {{ font-size: 1em; margin-bottom: 6px; }}
-.news-title a {{ color: #e0e0e0; text-decoration: none; }}
-.news-title a:hover {{ color: #4fc3f7; }}
-.news-meta {{ font-size: 0.8em; color: #888; margin-bottom: 6px; }}
-.news-summary {{ font-size: 0.85em; color: #aaa; }}
-.news-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }}
-footer {{
-    text-align: center; padding: 24px; color: #555;
-    font-size: 0.8em; margin-top: 40px;
-    border-top: 1px solid #2a2a4a;
-}}
-@media (max-width: 768px) {{
-    .grid-2, .analysis-grid, .news-grid {{ grid-template-columns: 1fr; }}
-    .price-value {{ font-size: 1.8em; }}
-    header h1 {{ font-size: 1.4em; }}
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f23;color:#e0e0e0;line-height:1.6}}
+.container{{max-width:1440px;margin:0 auto;padding:20px}}
+header{{text-align:center;padding:30px 20px;background:linear-gradient(135deg,#1a1a2e,#16213e);
+    border-bottom:2px solid #4fc3f7;margin-bottom:24px}}
+header h1{{font-size:2em;color:#4fc3f7}}
+header .sub{{color:#888;margin-top:8px;font-size:.9em}}
+h2.sec{{font-size:1.4em;color:#4fc3f7;margin:32px 0 16px;padding-bottom:8px;border-bottom:1px solid #2a2a4a}}
+h3{{color:#4fc3f7;margin-bottom:12px;font-size:1.1em}}
+h4{{color:#4fc3f7;margin-bottom:8px}}
+.grid-2{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}}
+.grid-3{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px}}
+.card{{background:#1a1a2e;border-radius:12px;padding:24px;border:1px solid #2a2a4a}}
+.small-card{{padding:16px}}
+.center{{text-align:center}}
+.row{{display:flex;align-items:center}}
+.big-num{{font-size:2.2em;font-weight:700;color:#fff}}
+.med-num{{font-size:1.3em;font-weight:600;color:#fff}}
+.muted{{color:#888}}.small{{font-size:.85em}}
+.bull{{color:#26a69a;font-weight:600}}
+.bear{{color:#ef5350;font-weight:600}}
+.neut{{color:#ffa726;font-weight:600}}
+.bar-bg{{height:8px;background:#2a2a4a;border-radius:4px;overflow:hidden;margin:8px 0}}
+.bar-fill{{height:100%;background:linear-gradient(90deg,#ef5350,#ffa726,#26a69a);border-radius:4px}}
+.factors{{margin-top:12px;padding-left:20px;color:#aaa;font-size:.9em}}
+.factors li{{margin-bottom:4px}}
+.tbl{{width:100%;border-collapse:collapse;margin:12px 0;background:#1a1a2e;border-radius:8px;overflow:hidden}}
+.tbl th{{background:#16213e;padding:10px 14px;text-align:left;color:#4fc3f7;font-size:.9em}}
+.tbl td{{padding:8px 14px;border-bottom:1px solid #2a2a4a}}
+.sg-bull{{color:#26a69a;font-weight:700}}.sg-bear{{color:#ef5350;font-weight:700}}.sg-neut{{color:#ffa726;font-weight:700}}
+.tabs{{display:flex;gap:4px;border-bottom:2px solid #2a2a4a;flex-wrap:wrap}}
+.tab-btn{{padding:10px 22px;cursor:pointer;background:#1a1a2e;border:1px solid #2a2a4a;
+    border-bottom:none;border-radius:8px 8px 0 0;color:#888;font-size:.95em;transition:all .2s}}
+.tab-btn.active{{background:#16213e;color:#4fc3f7;border-color:#4fc3f7}}
+.tab-btn:hover{{color:#4fc3f7}}
+.tab-content{{display:none;padding:20px 0}}.tab-content.active{{display:block}}
+.news-item{{background:#1a1a2e;border-radius:8px;padding:14px;margin-bottom:10px;
+    border:1px solid #2a2a4a;transition:border-color .2s}}
+.news-item:hover{{border-color:#4fc3f7}}
+.news-title{{margin-bottom:4px}}.news-title a{{color:#e0e0e0;text-decoration:none}}
+.news-title a:hover{{color:#4fc3f7}}
+.news-grid{{display:grid;grid-template-columns:1fr 1fr;gap:24px}}
+.mini-card{{background:#1a1a2e;border-radius:8px;padding:14px 18px;border:1px solid #2a2a4a;min-width:140px}}
+.alert{{background:#b71c1c33;border:1px solid #ef5350;border-radius:6px;padding:8px 12px;
+    margin-top:8px;font-size:.9em;color:#ef5350}}
+footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px;border-top:1px solid #2a2a4a}}
+@media(max-width:768px){{
+    .grid-2,.grid-3,.news-grid{{grid-template-columns:1fr}}
+    .big-num{{font-size:1.6em}}header h1{{font-size:1.3em}}
+    .tab-btn{{padding:8px 14px;font-size:.85em}}
 }}
 </style>
 </head>
 <body>
-
 <header>
     <h1>&#9749; Dashboard Mercado de Cafe</h1>
-    <div class="subtitle">Robusta (Conilon) &amp; Arabica &mdash; Atualizado em {now}</div>
+    <div class="sub">Robusta (Conilon) &amp; Arabica &mdash; Atualizado em {now}</div>
 </header>
-
 <div class="container">
 
-    <!-- PRECOS -->
-    <h2 class="section-title">&#128200; Precos Atuais</h2>
-    <div class="grid-2">
-        {price_card("Cafe Arabica (KC) - ICE", arabica_price)}
-        {price_card("Cafe Robusta (RC) - ICE", robusta_price)}
+    <!-- PRECOS + DOLAR -->
+    <h2 class="sec">&#128200; Precos e Cambio</h2>
+    <div class="grid-3">
+        {_price_card("Cafe Arabica (KC) — ICE NY", arabica_price)}
+        {_price_card("Cafe Robusta (RC) — ICE London", robusta_price)}
+        {usdbrl_card}
     </div>
+
+    <!-- COMMODITIES CORRELACIONADAS -->
+    <h2 class="sec">&#128279; Commodities Correlacionadas</h2>
+    {commodity_html}
+
+    <!-- SPREAD -->
+    <h2 class="sec">&#8646; Spread Arabica / Robusta</h2>
+    {spread_html}
 
     <!-- RECOMENDACOES -->
-    <h2 class="section-title">&#127919; Posicao Recomendada</h2>
+    <h2 class="sec">&#127919; Posicao Recomendada</h2>
     <div class="grid-2">
-        {rec_card("Arabica", arabica_rec)}
-        {rec_card("Robusta / Conilon", robusta_rec)}
+        {_rec_card("Arabica", arabica_rec)}
+        {_rec_card("Robusta / Conilon", robusta_rec)}
+    </div>
+    <div class="grid-2">
+        {arabica_breakdown}
+        {robusta_breakdown}
     </div>
 
-    <!-- TABS -->
-    <h2 class="section-title">&#128202; Analise Detalhada</h2>
+    <!-- SAZONALIDADE -->
+    <h2 class="sec">&#128197; Sazonalidade e Safra</h2>
+    {season_card_html}
+    {season_chart}
+
+    <!-- ESTOQUES + COT -->
+    <h2 class="sec">&#128230; Estoques ICE &amp; Posicoes de Fundos</h2>
+    {ice_cot_html}
+
+    <!-- CLIMA -->
+    <h2 class="sec">&#127782;&#65039; Clima nas Regioes Produtoras</h2>
+    {weather_cards_html}
+    {weather_chart}
+
+    <!-- TABS ANALISE -->
+    <h2 class="sec">&#128202; Analise Detalhada</h2>
     <div class="tabs">
         <div class="tab-btn active" onclick="switchTab('arabica')">&#9749; Arabica</div>
-        <div class="tab-btn" onclick="switchTab('robusta')">&#9749; Robusta (Conilon)</div>
+        <div class="tab-btn" onclick="switchTab('robusta')">&#9749; Robusta</div>
+        <div class="tab-btn" onclick="switchTab('usdbrl')">&#128181; USD/BRL</div>
         <div class="tab-btn" onclick="switchTab('news')">&#128240; Noticias</div>
     </div>
 
     <div id="tab-arabica" class="tab-content active">
-        <h3 style="color:#4fc3f7; margin-bottom:16px;">Analise Tecnica - Arabica</h3>
         {arabica_chart}
-        <div class="analysis-grid">
-            <div>
-                <h4 style="color:#4fc3f7; margin:16px 0 8px;">Sinais Tecnicos</h4>
-                {arabica_signals}
-            </div>
-            <div>
-                <h4 style="color:#4fc3f7; margin:16px 0 8px;">Sentimento de Mercado</h4>
-                {arabica_gauge}
-                {sent_stats(arabica_sentiment)}
-            </div>
+        <div class="grid-2">
+            <div><h4>Sinais Tecnicos</h4>{arabica_signals_html}</div>
+            <div><h4>Sentimento de Mercado</h4>{arabica_gauge}{sent_stats(arabica_sentiment)}</div>
         </div>
     </div>
 
     <div id="tab-robusta" class="tab-content">
-        <h3 style="color:#4fc3f7; margin-bottom:16px;">Analise Tecnica - Robusta (Conilon)</h3>
-        {robusta_chart}
-        <div class="analysis-grid">
-            <div>
-                <h4 style="color:#4fc3f7; margin:16px 0 8px;">Sinais Tecnicos</h4>
-                {robusta_signals}
-            </div>
-            <div>
-                <h4 style="color:#4fc3f7; margin:16px 0 8px;">Sentimento de Mercado</h4>
-                {robusta_gauge}
-                {sent_stats(robusta_sentiment)}
-            </div>
+        <div class="card center" style="padding:40px">
+            <h3>Robusta — Dados de Futuros</h3>
+            <p class="muted">Graficos historicos do Robusta nao estao disponiveis via fontes gratuitas.
+            A analise utiliza preco atual (Barchart), noticias, clima, sazonalidade e spread.</p>
+            {robusta_gauge}{sent_stats(robusta_sentiment)}
+        </div>
+    </div>
+
+    <div id="tab-usdbrl" class="tab-content">
+        {usdbrl_chart}
+        <div class="card" style="margin-top:16px">
+            <h4>Impacto do Dolar no Cafe</h4>
+            <p class="muted">Dolar forte (alta) tende a pressionar precos de commodities para baixo em USD,
+            mas beneficia exportadores brasileiros em BRL. Dolar fraco tem efeito inverso.</p>
         </div>
     </div>
 
     <div id="tab-news" class="tab-content">
         <div class="news-grid">
-            <div>
-                <h3 style="color:#4fc3f7; margin-bottom:16px;">&#9749; Noticias Arabica</h3>
-                {arabica_news_html}
-            </div>
-            <div>
-                <h3 style="color:#4fc3f7; margin-bottom:16px;">&#9749; Noticias Robusta / Conilon</h3>
-                {robusta_news_html}
-            </div>
+            <div><h3>&#9749; Noticias Arabica</h3>{arabica_news_html}</div>
+            <div><h3>&#9749; Noticias Robusta / Conilon</h3>{robusta_news_html}</div>
         </div>
-        <h3 style="color:#4fc3f7; margin:24px 0 16px;">&#127758; Mercado Geral de Cafe</h3>
+        <h3 style="margin-top:24px">&#127758; Mercado Geral</h3>
         {general_news_html}
     </div>
 
@@ -458,17 +580,17 @@ footer {{
 
 <footer>
     Este dashboard e apenas para fins informativos. Nao constitui conselho financeiro.<br>
-    Fontes: Yahoo Finance (futuros ICE) &middot; Google News RSS &middot; Analise automatizada por sentimento + indicadores tecnicos
+    Fontes: Yahoo Finance &middot; Barchart &middot; Google News RSS &middot; Open-Meteo &middot;
+    Analise: Tecnica + Sentimento + Sazonalidade + Clima + Spread + Estoques + COT
 </footer>
 
 <script>
-function switchTab(name) {{
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
-    const tabs = ['arabica','robusta','news'];
-    const btns = document.querySelectorAll('.tab-btn');
-    btns[tabs.indexOf(name)].classList.add('active');
+function switchTab(name){{
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('tab-'+name).classList.add('active');
+    const tabs=['arabica','robusta','usdbrl','news'];
+    document.querySelectorAll('.tab-btn')[tabs.indexOf(name)].classList.add('active');
     window.dispatchEvent(new Event('resize'));
 }}
 </script>
