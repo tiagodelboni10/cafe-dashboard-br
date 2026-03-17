@@ -27,6 +27,7 @@ from src.macro_data import (
     fetch_fertilizer_prices,
     analyze_fertilizer_impact,
     fetch_fertilizer_news,
+    fetch_brazilian_physical_prices,
     CROP_CALENDAR,
     COFFEE_FERTILIZATION,
 )
@@ -363,6 +364,90 @@ def _ice_cot_card(ice: dict, cot: dict) -> str:
         </div></div>'''
 
 
+def _physical_prices_section(phys: dict) -> str:
+    """Gera seção de preços do mercado físico brasileiro (CEPEA + praças)."""
+    if not phys:
+        return "<p class='muted'>Dados do mercado fisico indisponiveis</p>"
+
+    # CEPEA indicators
+    cepea_cards = ""
+    arabica_cepea = phys.get("arabica_cepea")
+    robusta_cepea = phys.get("robusta_cepea")
+
+    for label, data, color in [
+        ("Arabica — CEPEA/Esalq", arabica_cepea, "#26a69a"),
+        ("Robusta/Conilon — CEPEA/Esalq", robusta_cepea, "#ffa726"),
+    ]:
+        if data:
+            var_text = data.get("variation", "")
+            var_num = 0.0
+            try:
+                var_num = float(var_text.replace(",", ".").replace("%", "").strip())
+            except (ValueError, AttributeError):
+                pass
+            var_color = "#26a69a" if var_num >= 0 else "#ef5350"
+            arrow = "&#9650;" if var_num >= 0 else "&#9660;"
+            cepea_cards += f'''<div class="card center">
+                <h3>{label}</h3>
+                <div class="muted small">Referencia oficial — {data.get("date","")}</div>
+                <div class="big-num" style="color:{color}">R$ {data.get("price",0):,.2f}</div>
+                <div class="muted small">por saca de 60kg</div>
+                <div style="color:{var_color}; font-size:1.1em; font-weight:600; margin-top:8px">
+                    {arrow} {var_text}</div></div>'''
+        else:
+            cepea_cards += f'''<div class="card center">
+                <h3>{label}</h3>
+                <p class="muted">Indisponivel</p></div>'''
+
+    # Physical market prices by city (praças)
+    arabica_fisico = phys.get("arabica_fisico", [])
+    conilon_fisico = phys.get("conilon_fisico", [])
+
+    def _pracas_table(rows, title):
+        if not rows:
+            return f"<p class='muted'>{title}: sem dados</p>"
+        trs = ""
+        for r in rows[:10]:
+            var = r.get("variation", "")
+            try:
+                vn = float(var.replace(",", ".").replace("%", "").strip())
+                vc = "#26a69a" if vn >= 0 else "#ef5350"
+            except (ValueError, AttributeError):
+                vc = "#888"
+            trs += f'<tr><td>{r.get("city", r.get("type",""))}</td><td style="font-weight:600">R$ {r.get("price",0):,.2f}</td><td style="color:{vc}">{var}</td></tr>'
+        return f'''<div class="card">
+            <h4>{title}</h4>
+            <table class="tbl">
+                <thead><tr><th>Praca / Tipo</th><th>R$/saca 60kg</th><th>Variacao</th></tr></thead>
+                <tbody>{trs}</tbody></table></div>'''
+
+    pracas_html = f'''<div class="grid-2" style="margin-top:16px">
+        {_pracas_table(arabica_fisico, "Mercado Fisico — Arabica Tipo 6/7")}
+        {_pracas_table(conilon_fisico, "Mercado Fisico — Conilon")}
+    </div>'''
+
+    # NYBOT futures in BRL
+    nybot = phys.get("nybot", [])
+    nybot_html = ""
+    if nybot:
+        nybot_rows = ""
+        for n in nybot[:5]:
+            nybot_rows += f'<tr><td>{n.get("contract","")}</td><td>{n.get("usx_lb","")}</td><td style="font-weight:600">R$ {n.get("brl_saca",0):,.2f}</td><td>{n.get("variation","")}</td></tr>'
+        nybot_html = f'''<div class="card" style="margin-top:16px">
+            <h4>Futuros NYBOT em R$/saca</h4>
+            <table class="tbl">
+                <thead><tr><th>Contrato</th><th>USX/lb</th><th>R$/saca</th><th>Variacao</th></tr></thead>
+                <tbody>{nybot_rows}</tbody></table></div>'''
+
+    updated = phys.get("updated", "")
+    updated_html = f'<div class="muted small" style="text-align:right; margin-top:8px">Fonte: Noticias Agricolas / CEPEA-Esalq{" — " + updated if updated else ""}</div>'
+
+    return f'''<div class="grid-2">{cepea_cards}</div>
+        {pracas_html}
+        {nybot_html}
+        {updated_html}'''
+
+
 def _fertilizer_section(fert_data: dict, fert_impact: dict, fert_news: list) -> str:
     """Gera seção completa de fertilizantes."""
     if not fert_data:
@@ -443,6 +528,9 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 
     print("Buscando commodities correlacionadas...")
     commodities = fetch_correlated_commodities()
+
+    print("Buscando precos do mercado fisico brasileiro...")
+    physical_prices = fetch_brazilian_physical_prices()
 
     print("Buscando fertilizantes e insumos...")
     fert_data = fetch_fertilizer_prices()
@@ -555,6 +643,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     general_news_html = _news_list(news.get("geral", []), "Geral")
     weather_cards_html = _weather_cards(weather)
     commodity_html = _commodity_row(commodities)
+    physical_html = _physical_prices_section(physical_prices)
     spread_html = _spread_card(spread, spread_brl)
     season_card_html = _season_card(season)
     ice_cot_html = _ice_cot_card(ice_stocks, cot)
@@ -643,11 +732,15 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
 </header>
 <div class="container">
 
-    <!-- PRECOS + DOLAR -->
-    <h2 class="sec">&#128200; Precos e Cambio</h2>
+    <!-- PRECOS MERCADO FISICO (referencia) -->
+    <h2 class="sec">&#128200; Precos do Dia — Mercado Fisico (R$/saca 60kg)</h2>
+    {physical_html}
+
+    <!-- PRECOS FUTUROS + DOLAR -->
+    <h2 class="sec">&#128202; Precos Futuros (convertidos) e Cambio</h2>
     <div class="grid-3">
-        {_price_card("Cafe Arabica — R$/saca 60kg", arabica_brl)}
-        {_price_card("Cafe Robusta (Conilon) — R$/saca 60kg", robusta_brl)}
+        {_price_card("Arabica Futuros (NYBOT) — R$/saca", arabica_brl)}
+        {_price_card("Robusta Futuros (ICE) — R$/saca", robusta_brl)}
         {usdbrl_card}
     </div>
 
@@ -737,7 +830,7 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
 
 <footer>
     Este dashboard e apenas para fins informativos. Nao constitui conselho financeiro.<br>
-    Fontes: Yahoo Finance &middot; Barchart &middot; Google News RSS &middot; Open-Meteo &middot;
+    Fontes: CEPEA/Esalq &middot; Noticias Agricolas &middot; Yahoo Finance &middot; Barchart &middot; Google News RSS &middot; Open-Meteo &middot;
     Analise: Tecnica + Sentimento + Sazonalidade + Clima + Spread + Estoques + Fertilizantes + COT
 </footer>
 

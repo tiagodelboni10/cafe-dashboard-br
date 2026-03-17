@@ -441,6 +441,145 @@ COFFEE_FERTILIZATION = {
 }
 
 
+# ---------------------------------------------------------------------------
+# 9. Preços do mercado físico brasileiro (CEPEA/Esalq + praças)
+# ---------------------------------------------------------------------------
+
+def fetch_brazilian_physical_prices() -> dict:
+    """Busca preços do mercado físico brasileiro via Notícias Agrícolas.
+
+    Retorna preços CEPEA/Esalq (referência) e praças do mercado físico
+    em R$/saca de 60kg — preço do dia.
+    """
+    import feedparser
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+    }
+    result = {
+        "arabica_cepea": None,
+        "robusta_cepea": None,
+        "arabica_fisico": [],
+        "conilon_fisico": [],
+        "nybot": [],
+        "updated": "",
+    }
+
+    try:
+        resp = requests.get(
+            "https://www.noticiasagricolas.com.br/cotacoes/cafe",
+            headers=headers, timeout=15,
+        )
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for div in soup.select("div.cotacao"):
+            title = div.get_text()[:100]
+
+            # ── CEPEA/Esalq Arábica ──
+            if "Indicador" in title and "bica" in title and "Robusta" not in title:
+                table = div.find("table")
+                if table:
+                    cells = [td.get_text(strip=True) for td in table.find_all("td")]
+                    # cells: [date, value, variation, ...]
+                    if len(cells) >= 3:
+                        val = cells[1].replace(".", "").replace(",", ".")
+                        try:
+                            result["arabica_cepea"] = {
+                                "price": float(val),
+                                "variation": cells[2],
+                                "date": cells[0],
+                            }
+                        except ValueError:
+                            pass
+
+            # ── CEPEA/Esalq Robusta ──
+            elif "Indicador" in title and "Robusta" in title:
+                table = div.find("table")
+                if table:
+                    cells = [td.get_text(strip=True) for td in table.find_all("td")]
+                    if len(cells) >= 3:
+                        val = cells[1].replace(".", "").replace(",", ".")
+                        try:
+                            result["robusta_cepea"] = {
+                                "price": float(val),
+                                "variation": cells[2],
+                                "date": cells[0],
+                            }
+                        except ValueError:
+                            pass
+
+            # ── NYBOT (futuros em R$/saca) ──
+            elif "Nova Iorque" in title or "NYBOT" in title:
+                table = div.find("table")
+                if table:
+                    rows = table.find_all("tr")[1:]  # skip header
+                    for row in rows:
+                        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                        if len(cells) >= 3:
+                            try:
+                                brl_val = cells[2].replace(".", "").replace(",", ".")
+                                result["nybot"].append({
+                                    "contract": cells[0],
+                                    "usx_lb": cells[1],
+                                    "brl_saca": float(brl_val),
+                                    "variation": cells[3] if len(cells) > 3 else "",
+                                })
+                            except (ValueError, IndexError):
+                                pass
+
+            # ── Mercado Físico Arábica (praças) ──
+            elif "sico" in title and ("Tipo 6/7" in title or "Tipo 6 " in title):
+                table = div.find("table")
+                if table:
+                    rows = table.find_all("tr")[1:]
+                    for row in rows:
+                        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                        if len(cells) >= 3:
+                            try:
+                                val = cells[1].replace(".", "").replace(",", ".")
+                                result["arabica_fisico"].append({
+                                    "city": cells[0],
+                                    "price": float(val),
+                                    "variation": cells[2],
+                                })
+                            except (ValueError, IndexError):
+                                pass
+
+            # ── Conilon ES ──
+            elif "Conilon" in title:
+                table = div.find("table")
+                if table:
+                    rows = table.find_all("tr")[1:]
+                    for row in rows:
+                        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                        if len(cells) >= 3:
+                            try:
+                                val = cells[1].replace(".", "").replace(",", ".")
+                                price = float(val)
+                                if price > 100:  # filtrar headers
+                                    result["conilon_fisico"].append({
+                                        "type": cells[0],
+                                        "price": price,
+                                        "variation": cells[2],
+                                    })
+                            except (ValueError, IndexError):
+                                pass
+
+        # Data de atualização
+        update_el = soup.find(string=re.compile(r"Atualizado em"))
+        if update_el:
+            m = re.search(r"Atualizado em:\s*(\S+)", update_el)
+            if m:
+                result["updated"] = m.group(1)
+
+    except Exception as e:
+        print(f"Erro ao buscar precos fisicos: {e}")
+
+    return result
+
+
 def fetch_fertilizer_prices() -> dict:
     """Busca preços de fertilizantes e insumos via yfinance."""
     results = {}
