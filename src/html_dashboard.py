@@ -24,7 +24,11 @@ from src.macro_data import (
     fetch_cot_news,
     get_current_season_context,
     fetch_correlated_commodities,
+    fetch_fertilizer_prices,
+    analyze_fertilizer_impact,
+    fetch_fertilizer_news,
     CROP_CALENDAR,
+    COFFEE_FERTILIZATION,
 )
 
 PLOTLY_THEME = dict(
@@ -161,6 +165,35 @@ def build_season_chart(season: dict) -> str:
         barmode="stack", showlegend=False,
     )
     return _chart(fig, 320)
+
+
+def build_fertilizer_chart(fert_data: dict) -> str:
+    """Gera gráfico de barras dos preços e variações de fertilizantes."""
+    if not fert_data:
+        return "<p class='muted'>Dados de fertilizantes indisponiveis</p>"
+
+    names = list(fert_data.keys())
+    changes_1d = [fert_data[n].get("change_pct", 0) for n in names]
+    changes_30d = [fert_data[n].get("change_30d", 0) for n in names]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=names, x=changes_1d, orientation="h", name="Variacao 1d (%)",
+        marker_color=["#26a69a" if v >= 0 else "#ef5350" for v in changes_1d],
+        text=[f"{v:+.1f}%" for v in changes_1d], textposition="auto",
+    ))
+    fig.add_trace(go.Bar(
+        y=names, x=changes_30d, orientation="h", name="Variacao 30d (%)",
+        marker_color=["#4fc3f7" if v >= 0 else "#ffa726" for v in changes_30d],
+        text=[f"{v:+.1f}%" for v in changes_30d], textposition="auto",
+        opacity=0.7,
+    ))
+    fig.update_layout(
+        title="Fertilizantes — Variacao de Preco",
+        barmode="group", yaxis=dict(autorange="reversed"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return _chart(fig, 350)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -322,6 +355,54 @@ def _ice_cot_card(ice: dict, cot: dict) -> str:
         </div></div>'''
 
 
+def _fertilizer_section(fert_data: dict, fert_impact: dict, fert_news: list) -> str:
+    """Gera seção completa de fertilizantes."""
+    if not fert_data:
+        return "<p class='muted'>Dados de fertilizantes indisponiveis</p>"
+
+    # Cards de preço
+    cards = ""
+    for name, info in fert_data.items():
+        p = info.get("price", 0)
+        pct = info.get("change_pct", 0)
+        pct30 = info.get("change_30d", 0)
+        color = "#26a69a" if pct >= 0 else "#ef5350"
+        color30 = "#4fc3f7" if pct30 >= 0 else "#ffa726"
+        arrow = "&#9650;" if pct >= 0 else "&#9660;"
+        tipo = "&#128200;" if info.get("tipo") == "commodity" else "&#127970;"
+        cards += f'''<div class="mini-card">
+            <div class="muted small">{tipo} {name}</div>
+            <div style="font-size:1.1em; font-weight:600">{p:,.2f}</div>
+            <div style="color:{color}; font-size:.85em">{arrow} {abs(pct):.2f}% (1d)</div>
+            <div style="color:{color30}; font-size:.8em">30d: {pct30:+.1f}%</div>
+            <div class="muted small" style="margin-top:4px">{info.get("relevancia","")}</div></div>'''
+
+    # Impacto
+    impact_html = ""
+    if fert_impact:
+        trend = fert_impact.get("trend", "")
+        sig = fert_impact.get("signal", "")
+        t_color = "#26a69a" if "ALTA" in trend else "#ef5350" if "QUEDA" in trend else "#ffa726"
+        impact_html = f'''<div class="card" style="border-left:4px solid {t_color}; margin-top:16px">
+            <h4>Impacto no Cafe: <span style="color:{t_color}">{trend}</span></h4>
+            <div class="muted" style="margin:8px 0">{sig}</div>
+            <div class="muted small" style="margin-top:8px; padding:12px; background:#16213e; border-radius:8px">
+                <strong>Contexto:</strong> {COFFEE_FERTILIZATION["custo_pct"]}<br>
+                {COFFEE_FERTILIZATION["impacto"]}</div></div>'''
+
+    # Notícias
+    news_html = ""
+    if fert_news:
+        for a in fert_news[:5]:
+            news_html += f'''<div class="news-item">
+                <div class="news-title"><a href="{a.get("link","#")}" target="_blank">{a.get("title","")}</a></div>
+                <div class="muted small">{a.get("published","")} &middot; {a.get("summary","")[:150]}</div></div>'''
+
+    return f'''<div class="row" style="gap:12px; flex-wrap:wrap; margin-bottom:16px">{cards}</div>
+        {impact_html}
+        {f'<h4 style="margin-top:16px">Noticias de Insumos</h4>' + news_html if news_html else ''}'''
+
+
 # ──────────────────────────────────────────────────────────────────
 # Main generator
 # ──────────────────────────────────────────────────────────────────
@@ -355,6 +436,11 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     print("Buscando commodities correlacionadas...")
     commodities = fetch_correlated_commodities()
 
+    print("Buscando fertilizantes e insumos...")
+    fert_data = fetch_fertilizer_prices()
+    fert_impact = analyze_fertilizer_impact(fert_data)
+    fert_news = fetch_fertilizer_news()
+
     # ── Analyze ──
     print("Analisando...")
     arabica_sentiment = analyze_sentiment(news.get("arabica", []))
@@ -376,12 +462,14 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     arabica_rec = generate_recommendation(
         arabica_sentiment, arabica_technicals, arabica_price,
         season=season, spread=spread, weather_alerts=all_weather_alerts,
-        ice_stocks=ice_stocks, cot=cot, coffee_type="arabica",
+        ice_stocks=ice_stocks, cot=cot, fertilizer_impact=fert_impact,
+        coffee_type="arabica",
     )
     robusta_rec = generate_recommendation(
         robusta_sentiment, robusta_technicals, robusta_price,
         season=season, spread=spread, weather_alerts=all_weather_alerts,
-        ice_stocks=ice_stocks, cot=cot, coffee_type="robusta",
+        ice_stocks=ice_stocks, cot=cot, fertilizer_impact=fert_impact,
+        coffee_type="robusta",
     )
 
     # ── Build charts ──
@@ -390,6 +478,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     usdbrl_chart = build_usdbrl_chart(usdbrl_hist)
     weather_chart = build_weather_chart(weather)
     season_chart = build_season_chart(season)
+    fert_chart = build_fertilizer_chart(fert_data)
     arabica_gauge = build_gauge(arabica_sentiment.get("score", 0), "Sentimento Arabica")
     robusta_gauge = build_gauge(robusta_sentiment.get("score", 0), "Sentimento Robusta")
     arabica_breakdown = build_breakdown_chart(arabica_rec.get("breakdown", {}), "Arabica")
@@ -407,6 +496,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     spread_html = _spread_card(spread)
     season_card_html = _season_card(season)
     ice_cot_html = _ice_cot_card(ice_stocks, cot)
+    fert_section_html = _fertilizer_section(fert_data, fert_impact, fert_news)
 
     sent_stats = lambda s: f'''<div class="row center" style="gap:20px; padding:8px">
         <span class="bull">Alta: {s.get("bullish",0)}</span>
@@ -527,6 +617,11 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     <h2 class="sec">&#128230; Estoques ICE &amp; Posicoes de Fundos</h2>
     {ice_cot_html}
 
+    <!-- FERTILIZANTES -->
+    <h2 class="sec">&#129716; Fertilizantes e Insumos Agricolas</h2>
+    {fert_section_html}
+    {fert_chart}
+
     <!-- CLIMA -->
     <h2 class="sec">&#127782;&#65039; Clima nas Regioes Produtoras</h2>
     {weather_cards_html}
@@ -581,7 +676,7 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
 <footer>
     Este dashboard e apenas para fins informativos. Nao constitui conselho financeiro.<br>
     Fontes: Yahoo Finance &middot; Barchart &middot; Google News RSS &middot; Open-Meteo &middot;
-    Analise: Tecnica + Sentimento + Sazonalidade + Clima + Spread + Estoques + COT
+    Analise: Tecnica + Sentimento + Sazonalidade + Clima + Spread + Estoques + Fertilizantes + COT
 </footer>
 
 <script>

@@ -143,18 +143,20 @@ def generate_recommendation(
     weather_alerts: list | None = None,
     ice_stocks: dict | None = None,
     cot: dict | None = None,
+    fertilizer_impact: dict | None = None,
     coffee_type: str = "arabica",
 ) -> dict:
     """Gera recomendação final combinando todos os indicadores.
 
     Pesos:
-        30% Técnico
-        20% Sentimento de notícias
-        15% Sazonalidade
+        25% Técnico
+        18% Sentimento de notícias
+        14% Sazonalidade
         10% Spread Arábica/Robusta
         10% Clima (alertas)
-        10% Estoques ICE
-         5% Posição de fundos (COT)
+         8% Estoques ICE
+         8% Fertilizantes/Insumos
+         7% Posição de fundos (COT)
     """
     sent_score = sentiment.get("score", 0)
     tech_score = technicals.get("score", 0)
@@ -249,15 +251,24 @@ def generate_recommendation(
             s_cot = -0.5
             cot_detail = "Fundos especulativos posicionados na venda"
 
+    # Fertilizantes / Insumos
+    s_fert = 0.0
+    fert_detail = ""
+    if fertilizer_impact:
+        fert_score = fertilizer_impact.get("score", 0)
+        s_fert = max(-1, min(1, fert_score))
+        fert_detail = fertilizer_impact.get("signal", "")
+
     # ---------- combinar com pesos ----------
     combined = (
-        s_tech    * 0.30 +
-        s_sent    * 0.20 +
-        s_season  * 0.15 +
+        s_tech    * 0.25 +
+        s_sent    * 0.18 +
+        s_season  * 0.14 +
         s_spread  * 0.10 +
         s_weather * 0.10 +
-        s_ice     * 0.10 +
-        s_cot     * 0.05
+        s_ice     * 0.08 +
+        s_fert    * 0.08 +
+        s_cot     * 0.07
     )
     combined = max(-1, min(1, combined))
 
@@ -299,6 +310,8 @@ def generate_recommendation(
         factors.append(weather_detail)
     if ice_detail:
         factors.append(ice_detail)
+    if fert_detail:
+        factors.append(fert_detail)
     if cot_detail:
         factors.append(cot_detail)
 
@@ -315,13 +328,14 @@ def generate_recommendation(
 
     # breakdown de scores por pilar
     breakdown = {
-        "Técnico (30%)": round(s_tech, 3),
-        "Sentimento (20%)": round(s_sent, 3),
-        "Sazonalidade (15%)": round(s_season, 3),
+        "Técnico (25%)": round(s_tech, 3),
+        "Sentimento (18%)": round(s_sent, 3),
+        "Sazonalidade (14%)": round(s_season, 3),
         "Spread (10%)": round(s_spread, 3),
         "Clima (10%)": round(s_weather, 3),
-        "Estoques ICE (10%)": round(s_ice, 3),
-        "Fundos/COT (5%)": round(s_cot, 3),
+        "Estoques ICE (8%)": round(s_ice, 3),
+        "Fertilizantes (8%)": round(s_fert, 3),
+        "Fundos/COT (7%)": round(s_cot, 3),
     }
 
     return {

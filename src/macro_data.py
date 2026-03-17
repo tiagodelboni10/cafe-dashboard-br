@@ -407,3 +407,152 @@ def fetch_correlated_commodities() -> dict:
         except Exception:
             pass
     return results
+
+
+# ---------------------------------------------------------------------------
+# 8. Fertilizantes e insumos agrícolas
+# ---------------------------------------------------------------------------
+
+# Tickers: empresas líderes de fertilizantes + gás natural (matéria-prima da uréia)
+FERTILIZER_TICKERS = {
+    "Gás Natural (uréia)": {"ticker": "NG=F", "tipo": "commodity",
+        "relevancia": "Matéria-prima para produção de uréia (N). Alta no gás = adubo mais caro."},
+    "Mosaic (P+K)": {"ticker": "MOS", "tipo": "acao",
+        "relevancia": "Maior produtora de fosfato e potássio. Proxy de preço de MAP/DAP/KCl."},
+    "Nutrien (NPK)": {"ticker": "NTR", "tipo": "acao",
+        "relevancia": "Maior empresa de fertilizantes do mundo. Produz N, P e K."},
+    "CF Industries (N)": {"ticker": "CF", "tipo": "acao",
+        "relevancia": "Líder em nitrogênio/uréia. Proxy para custo de adubação nitrogenada."},
+    "ICL Group (K+P)": {"ticker": "ICL", "tipo": "acao",
+        "relevancia": "Produtora de potássio e fosfato especializado."},
+    "Intrepid Potash (K)": {"ticker": "IPI", "tipo": "acao",
+        "relevancia": "Produtora de potássio (KCl). Potássio é crítico para qualidade do café."},
+}
+
+# Adubação típica do café (kg/ha/ano) — para contextualização
+COFFEE_FERTILIZATION = {
+    "info": "O café é uma cultura exigente em nutrientes. Uma lavoura adulta de arábica "
+            "consome em média 300-450 kg/ha de N, 60-100 kg/ha de P2O5 e 200-350 kg/ha de K2O por ano.",
+    "npk_ratio": "A formulação mais comum para café é 20-05-20, aplicada em 3-4 parcelas.",
+    "custo_pct": "Fertilizantes representam 25-35% do custo total de produção do café.",
+    "impacto": "Alta no preço de fertilizantes pressiona o custo de produção, "
+               "o que pode sustentar preços do café (produtor repassa custo) "
+               "ou reduzir a adubação (menos produtividade na safra seguinte = menos oferta).",
+}
+
+
+def fetch_fertilizer_prices() -> dict:
+    """Busca preços de fertilizantes e insumos via yfinance."""
+    results = {}
+    for name, info in FERTILIZER_TICKERS.items():
+        try:
+            hist = yf.Ticker(info["ticker"]).history(period="5d")
+            if hist.empty:
+                continue
+            price = float(hist["Close"].iloc[-1])
+            prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+            change_pct = ((price - prev) / prev) * 100 if prev else 0
+
+            # Buscar variação de 30 dias
+            hist_30 = yf.Ticker(info["ticker"]).history(period="1mo")
+            change_30d = 0
+            if len(hist_30) > 1:
+                first = float(hist_30["Close"].iloc[0])
+                change_30d = ((price - first) / first) * 100 if first else 0
+
+            results[name] = {
+                "price": round(price, 2),
+                "change_pct": round(change_pct, 2),
+                "change_30d": round(change_30d, 2),
+                "tipo": info["tipo"],
+                "relevancia": info["relevancia"],
+            }
+        except Exception:
+            pass
+    return results
+
+
+def analyze_fertilizer_impact(fert_data: dict) -> dict:
+    """Analisa o impacto dos preços de fertilizantes no café."""
+    if not fert_data:
+        return {"trend": "indefinido", "signal": "", "score": 0}
+
+    # Calcular tendência média dos fertilizantes
+    changes_30d = [v["change_30d"] for v in fert_data.values() if "change_30d" in v]
+    avg_change = sum(changes_30d) / len(changes_30d) if changes_30d else 0
+
+    if avg_change > 10:
+        trend = "FORTE ALTA"
+        signal = (
+            "Fertilizantes em forte alta (+{:.1f}% em 30d) — custo de produção subindo "
+            "significativamente. Pode sustentar preços do café e reduzir investimento "
+            "em adubação na próxima safra."
+        ).format(avg_change)
+        score = 0.6  # altista para preço do café
+    elif avg_change > 3:
+        trend = "ALTA"
+        signal = (
+            "Fertilizantes em alta moderada (+{:.1f}% em 30d) — pressão no custo "
+            "de produção. Tendência de sustentação dos preços do café."
+        ).format(avg_change)
+        score = 0.3
+    elif avg_change < -10:
+        trend = "FORTE QUEDA"
+        signal = (
+            "Fertilizantes em forte queda ({:.1f}% em 30d) — custo de produção caindo. "
+            "Produtores podem investir mais em adubação = maior produtividade futura."
+        ).format(avg_change)
+        score = -0.4  # baixista para preço do café (mais oferta futura)
+    elif avg_change < -3:
+        trend = "QUEDA"
+        signal = (
+            "Fertilizantes em queda ({:.1f}% em 30d) — alívio no custo de produção."
+        ).format(avg_change)
+        score = -0.2
+    else:
+        trend = "ESTÁVEL"
+        signal = "Preços de fertilizantes estáveis ({:+.1f}% em 30d).".format(avg_change)
+        score = 0
+
+    return {
+        "trend": trend,
+        "signal": signal,
+        "score": round(score, 2),
+        "avg_change_30d": round(avg_change, 2),
+        "info": COFFEE_FERTILIZATION,
+    }
+
+
+def fetch_fertilizer_news() -> list[dict]:
+    """Busca notícias sobre fertilizantes e custo de produção do café."""
+    import feedparser
+
+    feeds = [
+        "https://news.google.com/rss/search?q=fertilizante+café+custo+produção&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=adubo+café+preço+insumo&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=coffee+fertilizer+cost+production&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=ureia+potassio+fosfato+preço+agrícola&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+    ]
+    articles = []
+    seen = set()
+    for feed_url in feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:5]:
+                title = entry.get("title", "")
+                if title.lower() not in seen:
+                    seen.add(title.lower())
+                    published = ""
+                    if hasattr(entry, "published_parsed") and entry.published_parsed:
+                        published = datetime(*entry.published_parsed[:6]).strftime("%Y-%m-%d %H:%M")
+                    articles.append({
+                        "title": title,
+                        "link": entry.get("link", ""),
+                        "published": published,
+                        "summary": BeautifulSoup(
+                            entry.get("summary", ""), "html.parser"
+                        ).get_text()[:200],
+                    })
+        except Exception:
+            pass
+    return articles[:10]
