@@ -28,6 +28,7 @@ from src.macro_data import (
     analyze_fertilizer_impact,
     fetch_fertilizer_news,
     fetch_brazilian_physical_prices,
+    fetch_paineldocafe,
     CROP_CALENDAR,
     COFFEE_FERTILIZATION,
 )
@@ -364,88 +365,127 @@ def _ice_cot_card(ice: dict, cot: dict) -> str:
         </div></div>'''
 
 
-def _physical_prices_section(phys: dict) -> str:
-    """Gera seção de preços do mercado físico brasileiro (CEPEA + praças)."""
-    if not phys:
-        return "<p class='muted'>Dados do mercado fisico indisponiveis</p>"
+def _painel_prices_section(painel: dict, phys: dict) -> str:
+    """Gera seção de preços com dados do Painel do Café + Notícias Agrícolas."""
 
-    # CEPEA indicators
-    cepea_cards = ""
-    arabica_cepea = phys.get("arabica_cepea")
-    robusta_cepea = phys.get("robusta_cepea")
+    # ── Painel do Café (destaque principal) ──
+    conilon = painel.get("conilon") if painel else None
+    arabica_rio = painel.get("arabica_rio") if painel else None
+    dolar = painel.get("dolar") if painel else None
+    londres = painel.get("londres") if painel else None
+    nyork = painel.get("nyork") if painel else None
 
-    for label, data, color in [
-        ("Arabica — CEPEA/Esalq", arabica_cepea, "#26a69a"),
-        ("Robusta/Conilon — CEPEA/Esalq", robusta_cepea, "#ffa726"),
-    ]:
-        if data:
-            var_text = data.get("variation", "")
-            var_num = 0.0
-            try:
-                var_num = float(var_text.replace(",", ".").replace("%", "").strip())
-            except (ValueError, AttributeError):
-                pass
-            var_color = "#26a69a" if var_num >= 0 else "#ef5350"
-            arrow = "&#9650;" if var_num >= 0 else "&#9660;"
-            cepea_cards += f'''<div class="card center">
-                <h3>{label}</h3>
-                <div class="muted small">Referencia oficial — {data.get("date","")}</div>
-                <div class="big-num" style="color:{color}">R$ {data.get("price",0):,.2f}</div>
-                <div class="muted small">por saca de 60kg</div>
-                <div style="color:{var_color}; font-size:1.1em; font-weight:600; margin-top:8px">
-                    {arrow} {var_text}</div></div>'''
-        else:
-            cepea_cards += f'''<div class="card center">
-                <h3>{label}</h3>
-                <p class="muted">Indisponivel</p></div>'''
+    def _main_card(label, price, color, subtitle="R$/saca 60kg"):
+        if not price:
+            return f'<div class="card center"><h3>{label}</h3><p class="muted">Indisponivel</p></div>'
+        return f'''<div class="card center">
+            <h3>{label}</h3>
+            <div class="big-num" style="color:{color}">R$ {price:,.2f}</div>
+            <div class="muted small">{subtitle}</div></div>'''
 
-    # Physical market prices by city (praças)
-    arabica_fisico = phys.get("arabica_fisico", [])
-    conilon_fisico = phys.get("conilon_fisico", [])
+    def _stock_card(label, info, color):
+        if not info:
+            return f'<div class="card center" style="background:#0d2818"><h3>{label}</h3><p class="muted">Indisponivel</p></div>'
+        p = info.get("price", 0)
+        ch = info.get("change", 0)
+        mv = info.get("movement", "")
+        strip = info.get("market_strip", "")
+        upd = info.get("last_update", "")
+        arrow = "&#9650;" if mv == "up" else "&#9660;"
+        ch_color = "#26a69a" if mv == "up" else "#ef5350"
+        prefix = "R$ " if "lar" in label.lower() else ""
+        suffix = f"<div class='muted small'>{strip} — {upd[:10]}</div>" if strip else ""
+        return f'''<div class="card center" style="background:#0d2818">
+            <h3 style="color:{color}">{label}</h3>
+            <div style="font-size:1.8em; font-weight:700; color:#fff">{prefix}{p:,.2f}</div>
+            <div style="color:{ch_color}; font-size:1em; font-weight:600">
+                {arrow} {abs(ch):.2f}%</div>
+            {suffix}</div>'''
 
-    def _pracas_table(rows, title):
-        if not rows:
-            return f"<p class='muted'>{title}: sem dados</p>"
-        trs = ""
-        for r in rows[:10]:
-            var = r.get("variation", "")
-            try:
-                vn = float(var.replace(",", ".").replace("%", "").strip())
-                vc = "#26a69a" if vn >= 0 else "#ef5350"
-            except (ValueError, AttributeError):
-                vc = "#888"
-            trs += f'<tr><td>{r.get("city", r.get("type",""))}</td><td style="font-weight:600">R$ {r.get("price",0):,.2f}</td><td style="color:{vc}">{var}</td></tr>'
-        return f'''<div class="card">
-            <h4>{title}</h4>
-            <table class="tbl">
-                <thead><tr><th>Praca / Tipo</th><th>R$/saca 60kg</th><th>Variacao</th></tr></thead>
-                <tbody>{trs}</tbody></table></div>'''
-
-    pracas_html = f'''<div class="grid-2" style="margin-top:16px">
-        {_pracas_table(arabica_fisico, "Mercado Fisico — Arabica Tipo 6/7")}
-        {_pracas_table(conilon_fisico, "Mercado Fisico — Conilon")}
+    main_cards = f'''<div class="grid-2" style="margin-bottom:16px">
+        {_main_card("Conilon 7/8", conilon.get("price") if conilon else None, "#ffa726")}
+        {_main_card("Arabica RIO", arabica_rio.get("price") if arabica_rio else None, "#26a69a")}
     </div>'''
 
-    # NYBOT futures in BRL
-    nybot = phys.get("nybot", [])
-    nybot_html = ""
-    if nybot:
-        nybot_rows = ""
-        for n in nybot[:5]:
-            nybot_rows += f'<tr><td>{n.get("contract","")}</td><td>{n.get("usx_lb","")}</td><td style="font-weight:600">R$ {n.get("brl_saca",0):,.2f}</td><td>{n.get("variation","")}</td></tr>'
-        nybot_html = f'''<div class="card" style="margin-top:16px">
-            <h4>Futuros NYBOT em R$/saca</h4>
-            <table class="tbl">
-                <thead><tr><th>Contrato</th><th>USX/lb</th><th>R$/saca</th><th>Variacao</th></tr></thead>
-                <tbody>{nybot_rows}</tbody></table></div>'''
+    market_cards = f'''<div class="grid-3">
+        {_stock_card("DOLAR", dolar, "#ef5350")}
+        {_stock_card("LONDRES", londres, "#ffa726")}
+        {_stock_card("N.YORK", nyork, "#26a69a")}
+    </div>'''
 
-    updated = phys.get("updated", "")
-    updated_html = f'<div class="muted small" style="text-align:right; margin-top:8px">Fonte: Noticias Agricolas / CEPEA-Esalq{" — " + updated if updated else ""}</div>'
+    # ── Notícias do Painel (mensagens) ──
+    msgs = painel.get("messages", []) if painel else []
+    msgs_html = ""
+    if msgs:
+        items = ""
+        for m in msgs[:6]:
+            items += f'<div class="news-item"><div class="muted small">{m.get("text","")}</div></div>'
+        msgs_html = f'<div style="margin-top:16px"><h4>Destaques do Painel do Cafe</h4>{items}</div>'
 
-    return f'''<div class="grid-2">{cepea_cards}</div>
-        {pracas_html}
-        {nybot_html}
-        {updated_html}'''
+    # ── CEPEA/Esalq + praças (Notícias Agrícolas) ──
+    pracas_html = ""
+    if phys:
+        arabica_cepea = phys.get("arabica_cepea")
+        robusta_cepea = phys.get("robusta_cepea")
+        cepea_cards = ""
+        for label, data, color in [
+            ("Arabica — CEPEA/Esalq", arabica_cepea, "#26a69a"),
+            ("Robusta — CEPEA/Esalq", robusta_cepea, "#ffa726"),
+        ]:
+            if data:
+                var_text = data.get("variation", "")
+                try:
+                    var_num = float(var_text.replace(",", ".").replace("%", "").strip())
+                except (ValueError, AttributeError):
+                    var_num = 0
+                var_color = "#26a69a" if var_num >= 0 else "#ef5350"
+                arrow = "&#9650;" if var_num >= 0 else "&#9660;"
+                cepea_cards += f'''<div class="mini-card" style="text-align:center; flex:1">
+                    <div class="muted small">{label}</div>
+                    <div style="font-size:1.3em; font-weight:700; color:{color}">R$ {data.get("price",0):,.2f}</div>
+                    <div style="color:{var_color}; font-size:.85em">{arrow} {var_text}</div>
+                    <div class="muted small">{data.get("date","")}</div></div>'''
+
+        arabica_fisico = phys.get("arabica_fisico", [])
+        conilon_fisico = phys.get("conilon_fisico", [])
+
+        def _pracas_table(rows, title):
+            if not rows:
+                return ""
+            trs = ""
+            for r in rows[:8]:
+                var = r.get("variation", "")
+                try:
+                    vn = float(var.replace(",", ".").replace("%", "").strip())
+                    vc = "#26a69a" if vn >= 0 else "#ef5350"
+                except (ValueError, AttributeError):
+                    vc = "#888"
+                trs += f'<tr><td>{r.get("city", r.get("type",""))}</td><td style="font-weight:600">R$ {r.get("price",0):,.2f}</td><td style="color:{vc}">{var}</td></tr>'
+            return f'''<div class="card">
+                <h4>{title}</h4>
+                <table class="tbl">
+                    <thead><tr><th>Praca / Tipo</th><th>R$/saca</th><th>Var.</th></tr></thead>
+                    <tbody>{trs}</tbody></table></div>'''
+
+        cepea_row = f'<div class="row" style="gap:12px; flex-wrap:wrap; margin-bottom:16px">{cepea_cards}</div>' if cepea_cards else ""
+        tables = f'''<div class="grid-2">
+            {_pracas_table(arabica_fisico, "Mercado Fisico — Arabica Tipo 6/7")}
+            {_pracas_table(conilon_fisico, "Mercado Fisico — Conilon")}
+        </div>'''
+        pracas_html = f'''<div style="margin-top:20px">
+            <h4>Indicadores CEPEA/Esalq e Pracas</h4>
+            {cepea_row}
+            {tables}
+            <div class="muted small" style="text-align:right; margin-top:4px">Fonte: Noticias Agricolas / CEPEA-Esalq</div>
+        </div>'''
+
+    src = '<div class="muted small" style="text-align:right; margin-top:8px">Fonte: paineldocafe.com.br</div>'
+
+    return f'''{main_cards}
+        {market_cards}
+        {src}
+        {msgs_html}
+        {pracas_html}'''
 
 
 def _fertilizer_section(fert_data: dict, fert_impact: dict, fert_news: list) -> str:
@@ -528,6 +568,9 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 
     print("Buscando commodities correlacionadas...")
     commodities = fetch_correlated_commodities()
+
+    print("Buscando precos do Painel do Cafe...")
+    painel_data = fetch_paineldocafe()
 
     print("Buscando precos do mercado fisico brasileiro...")
     physical_prices = fetch_brazilian_physical_prices()
@@ -643,7 +686,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     general_news_html = _news_list(news.get("geral", []), "Geral")
     weather_cards_html = _weather_cards(weather)
     commodity_html = _commodity_row(commodities)
-    physical_html = _physical_prices_section(physical_prices)
+    physical_html = _painel_prices_section(painel_data, physical_prices)
     spread_html = _spread_card(spread, spread_brl)
     season_card_html = _season_card(season)
     ice_cot_html = _ice_cot_card(ice_stocks, cot)

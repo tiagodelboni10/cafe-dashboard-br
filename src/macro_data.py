@@ -445,6 +445,71 @@ COFFEE_FERTILIZATION = {
 # 9. Preços do mercado físico brasileiro (CEPEA/Esalq + praças)
 # ---------------------------------------------------------------------------
 
+def fetch_paineldocafe() -> dict:
+    """Busca preços do Painel do Café (paineldocafe.com.br) via API.
+
+    Retorna Conilon 7/8, Arábica Rio, Dólar, Londres e N.York — preço do dia.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+    }
+    result = {
+        "conilon": None,
+        "arabica_rio": None,
+        "dolar": None,
+        "londres": None,
+        "nyork": None,
+        "messages": [],
+    }
+    try:
+        resp = requests.get(
+            "https://api.coffee-panel.mitrix.online/api/home/information",
+            headers=headers, timeout=15,
+        )
+        data = resp.json()
+
+        # Values: Conilon 7/8, Arábica RIO
+        for v in data.get("values", []):
+            name = v.get("name", "").lower()
+            val = v.get("value", 0)
+            if "conilon" in name:
+                result["conilon"] = {"name": v.get("name", ""), "price": round(val, 2)}
+            elif "bica" in name or "rio" in name:
+                result["arabica_rio"] = {"name": v.get("name", ""), "price": round(val, 2)}
+
+        # Stocks: Dólar, Londres, N.York
+        for s in data.get("stocks", []):
+            name = s.get("name", "").lower()
+            info = {
+                "name": s.get("name", ""),
+                "price": s.get("price", 0),
+                "change": s.get("change", 0),
+                "movement": s.get("movement", ""),
+                "last_update": s.get("last_update", ""),
+                "market_strip": s.get("market_strip", ""),
+            }
+            if "lar" in name or "usd" in name:
+                result["dolar"] = info
+            elif "londres" in name or "london" in name:
+                result["londres"] = info
+            elif "york" in name or name == "kc":
+                result["nyork"] = info
+
+        # Mensagens (notícias)
+        for m in data.get("messages", [])[:10]:
+            result["messages"].append({
+                "text": m.get("text", ""),
+                "created_at": m.get("created_at", ""),
+            })
+
+    except Exception as e:
+        print(f"Erro ao buscar Painel do Cafe: {e}")
+
+    return result
+
+
 def fetch_brazilian_physical_prices() -> dict:
     """Busca preços do mercado físico brasileiro via Notícias Agrícolas.
 
