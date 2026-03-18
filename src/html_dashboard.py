@@ -1,7 +1,7 @@
 """Gera dashboard como HTML estático auto-contido com todos os indicadores."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -807,7 +807,8 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     arabica_breakdown = build_breakdown_chart(arabica_rec.get("breakdown", {}), "Arabica")
     robusta_breakdown = build_breakdown_chart(robusta_rec.get("breakdown", {}), "Robusta")
 
-    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    BRT = timezone(timedelta(hours=-3))
+    now = datetime.now(BRT).strftime("%d/%m/%Y %H:%M")
 
     # ── Conversão para BRL/saca 60kg ──
     usd_rate = usdbrl.get("price", 5.20) or 5.20
