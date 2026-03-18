@@ -1150,7 +1150,7 @@ function switchTab(name){{
     window.dispatchEvent(new Event('resize'));
 }}
 
-const CHAT_API = 'https://cafeza.vercel.app/api/chat';
+const CHAT_API = 'https://cafe-dashboard-br.vercel.app/api/chat';
 let chatHistory = [];
 
 function toggleChat(){{
