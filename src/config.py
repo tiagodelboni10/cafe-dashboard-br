@@ -43,5 +43,5 @@ BEARISH_KEYWORDS = [
 # Configurações de exibição
 MAX_NEWS_PER_TYPE = 20
 HISTORICAL_DAYS = 180
-DASHBOARD_TITLE = "☕ Dashboard Mercado de Café - Robusta & Arábica"
+DASHBOARD_TITLE = "☕ Cafeza — Cultivar Inteligente"
 REFRESH_INTERVAL_HOURS = 6

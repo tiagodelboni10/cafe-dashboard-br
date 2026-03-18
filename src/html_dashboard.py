@@ -899,7 +899,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Mercado de Cafe</title>
+<title>Cafeza — Cultivar Inteligente</title>
 <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
@@ -968,7 +968,8 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
 </head>
 <body>
 <header>
-    <h1>&#9749; Dashboard Mercado de Cafe</h1>
+    <h1>&#9749; Cafeza</h1>
+    <div style="color:#4fc3f7; font-size:1.1em; font-weight:300; letter-spacing:2px; margin-top:4px">CULTIVAR INTELIGENTE</div>
     <div class="sub">Robusta (Conilon) &amp; Arabica &mdash; Atualizado em {now}</div>
 </header>
 <div class="container">
