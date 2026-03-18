@@ -1,16 +1,16 @@
 """Configurações e constantes do projeto."""
 
-# Feeds RSS para notícias de café
+# Feeds RSS para notícias de café — fontes relevantes (Reuters, Bloomberg, etc.)
 RSS_FEEDS = {
     "robusta": [
-        "https://news.google.com/rss/search?q=robusta+coffee+price&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-        "https://news.google.com/rss/search?q=conilon+café+preço&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-        "https://news.google.com/rss/search?q=robusta+coffee+futures&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=robusta+coffee+price+site:reuters.com+OR+site:bloomberg.com+OR+site:barchart.com&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=conilon+café+preço+site:noticiasagricolas.com.br+OR+site:reuters.com+OR+site:epbr.com.br&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=robusta+coffee+futures+ICE+London&hl=en-US&gl=US&ceid=US:en",
     ],
     "arabica": [
-        "https://news.google.com/rss/search?q=arabica+coffee+price&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-        "https://news.google.com/rss/search?q=café+arábica+preço&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-        "https://news.google.com/rss/search?q=arabica+coffee+futures&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=arabica+coffee+price+site:reuters.com+OR+site:bloomberg.com+OR+site:barchart.com&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=café+arábica+preço+site:noticiasagricolas.com.br+OR+site:reuters.com+OR+site:epbr.com.br&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=arabica+coffee+futures+ICE+NYBOT&hl=en-US&gl=US&ceid=US:en",
     ],
 }
 

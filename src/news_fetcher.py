@@ -56,8 +56,9 @@ def fetch_all_news(coffee_type: str) -> list[dict]:
 def fetch_additional_market_news() -> list[dict]:
     """Busca notícias gerais do mercado de café via Google News RSS."""
     general_feeds = [
-        "https://news.google.com/rss/search?q=coffee+market+commodity&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=mercado+café+commodity+brasil&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=coffee+market+commodity+site:reuters.com+OR+site:bloomberg.com+OR+site:ft.com+OR+site:barchart.com&hl=en-US&gl=US&ceid=US:en",
+        "https://news.google.com/rss/search?q=mercado+café+commodity+brasil+site:noticiasagricolas.com.br+OR+site:reuters.com+OR+site:valor.globo.com+OR+site:infomoney.com.br&hl=pt-BR&gl=BR&ceid=BR:pt-419",
+        "https://news.google.com/rss/search?q=coffee+supply+demand+crop+harvest+site:reuters.com+OR+site:bloomberg.com&hl=en-US&gl=US&ceid=US:en",
     ]
     all_articles = []
     seen_titles = set()

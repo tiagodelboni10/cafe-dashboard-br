@@ -413,15 +413,6 @@ def _painel_prices_section(painel: dict, phys: dict) -> str:
         {_stock_card("N.YORK", nyork, "#26a69a")}
     </div>'''
 
-    # ── Notícias do Painel (mensagens) ──
-    msgs = painel.get("messages", []) if painel else []
-    msgs_html = ""
-    if msgs:
-        items = ""
-        for m in msgs[:6]:
-            items += f'<div class="news-item"><div class="muted small">{m.get("text","")}</div></div>'
-        msgs_html = f'<div style="margin-top:16px"><h4>Destaques do Painel do Cafe</h4>{items}</div>'
-
     # ── CEPEA/Esalq + praças (Notícias Agrícolas) ──
     pracas_html = ""
     if phys:
@@ -484,7 +475,6 @@ def _painel_prices_section(painel: dict, phys: dict) -> str:
     return f'''{main_cards}
         {market_cards}
         {src}
-        {msgs_html}
         {pracas_html}'''
 
 

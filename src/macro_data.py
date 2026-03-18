@@ -461,7 +461,6 @@ def fetch_paineldocafe() -> dict:
         "dolar": None,
         "londres": None,
         "nyork": None,
-        "messages": [],
     }
     try:
         resp = requests.get(
@@ -496,13 +495,6 @@ def fetch_paineldocafe() -> dict:
                 result["londres"] = info
             elif "york" in name or name == "kc":
                 result["nyork"] = info
-
-        # Mensagens (notícias)
-        for m in data.get("messages", [])[:10]:
-            result["messages"].append({
-                "text": m.get("text", ""),
-                "created_at": m.get("created_at", ""),
-            })
 
     except Exception as e:
         print(f"Erro ao buscar Painel do Cafe: {e}")
