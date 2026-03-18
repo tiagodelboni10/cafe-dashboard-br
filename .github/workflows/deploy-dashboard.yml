@@ -2,9 +2,8 @@ name: Gerar e publicar dashboard de cafe
 
 on:
   schedule:
-    # Roda todos os dias as 07:00 e 13:00 UTC (04:00 e 10:00 BRT)
-    - cron: '0 7 * * 1-5'
-    - cron: '0 13 * * 1-5'
+    # Roda a cada 30 min em horario comercial (10:00-18:00 BRT = 13:00-21:00 UTC), seg-sex
+    - cron: '*/30 13-21 * * 1-5'
   workflow_dispatch: # permite rodar manualmente
 
 permissions:

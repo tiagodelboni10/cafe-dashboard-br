@@ -899,6 +899,7 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="300">
 <title>Cafeza — Cultivar Inteligente</title>
 <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
 <style>
