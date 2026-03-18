@@ -442,6 +442,211 @@ COFFEE_FERTILIZATION = {
 
 
 # ---------------------------------------------------------------------------
+# Conhecimento — Guia do Cafeicultor
+# ---------------------------------------------------------------------------
+
+COFFEE_KNOWLEDGE = {
+    "umidade_solo": {
+        "title": "Umidade Ideal do Solo",
+        "intro": "A capacidade de campo (CC) e o principal parametro para manejo de irrigacao. "
+                 "O monitoramento com tensiometros e fundamental para evitar estresse hidrico ou encharcamento.",
+        "arabica": {
+            "faixa_ideal": "60–70% da capacidade de campo",
+            "ponto_murcha": "Abaixo de 40% CC causa estresse hidrico severo",
+            "excesso": "Acima de 80% CC favorece fungos (cercospora, ferrugem) e asfixia radicular",
+            "fases": [
+                ("Florada", "70–80% CC", "Fase critica — deficit causa abortamento floral"),
+                ("Enchimento de grao", "60–70% CC", "Necessidade moderada a alta"),
+                ("Maturacao", "50–60% CC", "Leve estresse favorece maturacao uniforme"),
+                ("Pos-colheita / Vegetativo", "60–70% CC", "Recuperacao da planta e preparacao para florada"),
+            ],
+        },
+        "conilon": {
+            "faixa_ideal": "65–75% da capacidade de campo",
+            "nota": "Conilon e mais tolerante a seca que Arabica mas responde muito bem a irrigacao",
+            "fases": [
+                ("Florada", "75–85% CC", "Uniformidade de florada depende de estresse hidrico previo controlado"),
+                ("Enchimento de grao", "65–75% CC", "Fase de maior demanda hidrica"),
+                ("Maturacao", "55–65% CC", "Reducao gradual favorece qualidade"),
+            ],
+        },
+    },
+    "adubacao": {
+        "title": "Guia de Adubacao e Fertilizacao",
+        "calagem": "Manter pH entre 5.5 e 6.5. Aplicar calcario dolomitico 60–90 dias antes do plantio. "
+                   "Quantidade tipica: 2–4 ton/ha, conforme analise de solo.",
+        "macronutrientes": [
+            ("Nitrogenio (N)", "300–450 kg/ha/ano", "Parcelado em 3–4 aplicacoes (Out–Mar). Essencial para crescimento vegetativo e producao."),
+            ("Fosforo (P2O5)", "60–100 kg/ha/ano", "Aplicar no sulco de plantio e em cobertura anual. Fundamental para enraizamento."),
+            ("Potassio (K2O)", "200–350 kg/ha/ano", "Parcelado junto com N. Essencial para qualidade do grao e resistencia a seca."),
+        ],
+        "micronutrientes": [
+            ("Boro (B)", "Aplicacao foliar: 0.3–0.5% acido borico", "Critico para florada e frutificacao"),
+            ("Zinco (Zn)", "Sulfato de zinco 0.3–0.5% foliar", "Essencial para crescimento de ramos novos"),
+            ("Manganes (Mn)", "Sulfato de manganes 0.3% foliar", "Importante em solos com pH > 6.0"),
+        ],
+        "organica": "Palha de cafe (3–5 ton/ha) ou esterco curtido (10–20 ton/ha) melhoram "
+                    "estrutura do solo e retencao hidrica. Compostagem da casca do cafe e excelente opcao.",
+        "formulacoes": [
+            ("20-05-20", "Lavoura em producao — formulacao mais comum"),
+            ("20-10-10", "Lavoura em formacao (ate 3 anos)"),
+            ("25-00-25", "Cobertura em solos com P adequado"),
+        ],
+        "epoca": "Iniciar apos as primeiras chuvas (outubro). Parcelar em 3–4 vezes: Out, Dez, Fev (e Mar se necessario).",
+    },
+    "irrigacao": {
+        "title": "Boas Praticas de Irrigacao",
+        "sistemas": [
+            ("Gotejamento", "90–95% eficiencia", "Ideal para terrenos declivosos. Economia de 30–40% de agua vs aspersao. Permite fertirrigacao."),
+            ("Microaspersao", "80–90% eficiencia", "Boa uniformidade. Cobre mais area que gotejo. Pode auxiliar em geadas leves."),
+            ("Pivo central", "75–85% eficiencia", "Para areas planas e grandes (>50ha). Menor custo por hectare em escala."),
+            ("Aspersao convencional", "60–70% eficiencia", "Menor eficiencia, mais barato. Aceitavel para areas sem restricao hidrica."),
+        ],
+        "manejo": [
+            ("Tensiometros", "Irrigar quando tensao > 40 kPa (arabica) ou 60 kPa (conilon)"),
+            ("Turno de rega", "Definir pelo balanco hidrico: KC x ETo. KC varia de 0.8 (vegetativo) a 1.1 (frutificacao)"),
+            ("Horario ideal", "Final da tarde ou inicio da noite para reduzir evaporacao"),
+            ("Estresse controlado", "Suspender irrigacao 30–60 dias antes da florada esperada para uniformizar"),
+            ("Lamina de agua", "Calcular pela evapotranspiracao da cultura (ETc) e pela capacidade de retencao do solo"),
+        ],
+    },
+    "boas_praticas": {
+        "title": "Boas Praticas de Cultivo",
+        "podas": [
+            ("Decote", "Corte a 1.8–2.0m de altura", "Facilita colheita e renova copa. Fazer apos a colheita."),
+            ("Esqueletamento", "Corte de ramos a 30cm do tronco", "Ciclo de 4–5 anos. Estimula brotacao lateral."),
+            ("Recepa", "Corte total a 30–40cm do solo", "Para lavouras improdutivas. Recuperacao em 2 safras."),
+            ("Desbrota", "Eliminar brotos excessivos", "Manter 2–3 brotos por no, apos poda ou recepa."),
+        ],
+        "pragas_doencas": [
+            ("Broca-do-cafe", "Monitorar com armadilhas. Controle biologico com Beauveria bassiana. Nivel de controle: >3% de frutos brocados."),
+            ("Bicho-mineiro", "Monitorar folhas — nivel de controle: >30% de folhas minadas. Neonicotinoides sistemicos ou biologico."),
+            ("Ferrugem (Hemileia)", "Fungicidas cupricos preventivos (Jun–Ago). Variedades resistentes: Obata, Catucai, Paraiso."),
+            ("Cercospora", "Adubacao equilibrada em K e B reduz incidencia. Fungicidas foliares em areas com historico."),
+            ("Nematoides", "Usar variedades tolerantes (Apoata como porta-enxerto). Rotacao com Crotalaria."),
+        ],
+        "colheita": [
+            ("Ponto ideal", "70–80% dos frutos no estagio cereja. Evitar colher com menos de 50% cereja."),
+            ("Metodos", "Derrica manual (qualidade), derricadeira mecanica (mista), colheitadeira automotriz (terrenos planos)."),
+            ("Pos-colheita", "Secar ate 11–12% de umidade. Terreiro suspenso, secador mecanico ou secagem em leira."),
+            ("Armazenamento", "Tulhas ventiladas com umidade <12%. Separar lotes por qualidade e talhao."),
+        ],
+        "espacamento": [
+            ("Arabica convencional", "3.5–4.0m entre ruas x 0.5–1.0m entre plantas", "3.000–5.500 plantas/ha"),
+            ("Arabica adensado", "2.5–3.0m x 0.5–0.7m", "5.500–8.000 plantas/ha — exige mais manejo"),
+            ("Conilon", "3.0–3.5m x 1.0–1.5m", "2.000–3.500 plantas/ha"),
+        ],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Marketplace — Servicos e Equipamentos
+# ---------------------------------------------------------------------------
+
+MARKETPLACE_SERVICES = [
+    {
+        "title": "Drone de Pulverizacao",
+        "category": "Pulverizacao Aerea",
+        "icon": "&#128681;",
+        "tag": "Servico",
+        "tag_color": "#26a69a",
+        "description": "Servico de pulverizacao com drone para aplicacao de defensivos "
+                       "e fertilizantes foliares em lavouras de cafe. Precisao e economia.",
+        "specs": [
+            "Capacidade: 20–30L por voo",
+            "Cobertura: 8–15 ha/dia",
+            "Precisao GPS RTK centimetrica",
+            "Reducao de 30–40% no uso de defensivos",
+            "Sem compactacao do solo",
+        ],
+        "contact_label": "Solicitar orcamento",
+    },
+    {
+        "title": "Escavadeira Hidraulica",
+        "category": "Mecanizacao",
+        "icon": "&#128679;",
+        "tag": "Aluguel",
+        "tag_color": "#ffa726",
+        "description": "Locacao de escavadeira hidraulica para preparo de terreno, "
+                       "abertura de curvas de nivel, terraplanagem e construcao de estradas internas.",
+        "specs": [
+            "Cat 320 / Komatsu PC200",
+            "Disponivel por hora ou diaria",
+            "Operador incluso",
+            "Ideal para abertura de novas areas",
+        ],
+        "contact_label": "Consultar disponibilidade",
+    },
+    {
+        "title": "Colheitadeira de Cafe",
+        "category": "Colheita Mecanizada",
+        "icon": "&#127811;",
+        "tag": "Aluguel / Servico",
+        "tag_color": "#4fc3f7",
+        "description": "Colheitadeira automotriz para colheita mecanizada de cafe. "
+                       "Ideal para terrenos planos e lavouras com espacamento adequado.",
+        "specs": [
+            "Colhedora automotriz ou tratorizada",
+            "Rendimento: 30–60 sacas/hora",
+            "Disponivel por diaria ou safra",
+            "Assistencia tecnica inclusa",
+        ],
+        "contact_label": "Reservar para safra",
+    },
+    {
+        "title": "Analise de Solo e Foliar",
+        "category": "Laboratorio",
+        "icon": "&#128300;",
+        "tag": "Servico",
+        "tag_color": "#26a69a",
+        "description": "Analise completa de solo e tecido foliar com laudo e recomendacao "
+                       "de adubacao personalizada para sua lavoura de cafe.",
+        "specs": [
+            "Analise quimica completa do solo",
+            "Analise de micronutrientes",
+            "Analise foliar (macro + micro)",
+            "Laudo com recomendacao de adubacao",
+            "Resultado em 7–10 dias uteis",
+        ],
+        "contact_label": "Solicitar coleta",
+    },
+    {
+        "title": "Consultoria Agronomica",
+        "category": "Consultoria",
+        "icon": "&#127793;",
+        "tag": "Servico",
+        "tag_color": "#26a69a",
+        "description": "Consultoria especializada em cafeicultura. Planejamento de safra, "
+                       "manejo integrado de pragas, nutricao e irrigacao.",
+        "specs": [
+            "Visita tecnica mensal ou quinzenal",
+            "Planejamento de safra completo",
+            "Manejo integrado de pragas e doencas",
+            "Recomendacao de adubacao e irrigacao",
+        ],
+        "contact_label": "Agendar visita",
+    },
+    {
+        "title": "Mudas de Cafe",
+        "category": "Insumos",
+        "icon": "&#127807;",
+        "tag": "Venda",
+        "tag_color": "#ef5350",
+        "description": "Mudas de cafe arabica e conilon de alta qualidade. "
+                       "Variedades resistentes a ferrugem e nematoides.",
+        "specs": [
+            "Arabica: Obata, Catucai, Paraiso, Arara",
+            "Conilon: clones recomendados Incaper",
+            "Mudas de 4–6 meses (prontas para plantio)",
+            "Entrega em todo ES, MG, SP e RJ",
+        ],
+        "contact_label": "Consultar precos",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # 9. Preços do mercado físico brasileiro (CEPEA/Esalq + praças)
 # ---------------------------------------------------------------------------
 

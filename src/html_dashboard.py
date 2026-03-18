@@ -31,6 +31,8 @@ from src.macro_data import (
     fetch_paineldocafe,
     CROP_CALENDAR,
     COFFEE_FERTILIZATION,
+    COFFEE_KNOWLEDGE,
+    MARKETPLACE_SERVICES,
 )
 
 PLOTLY_THEME = dict(
@@ -526,6 +528,199 @@ def _fertilizer_section(fert_data: dict, fert_impact: dict, fert_news: list) -> 
         {f'<h4 style="margin-top:16px">Noticias de Insumos</h4>' + news_html if news_html else ''}'''
 
 
+def _marketplace_section(services: list) -> str:
+    """Gera seção de marketplace com serviços e equipamentos."""
+    if not services:
+        return ""
+    cards = ""
+    for svc in services:
+        specs_html = "".join(f"<li>{s}</li>" for s in svc.get("specs", []))
+        tag_color = svc.get("tag_color", "#26a69a")
+        cards += f'''<div class="card" style="border-left:4px solid {tag_color}">
+            <div class="row" style="gap:12px; margin-bottom:10px">
+                <span style="font-size:2.2em">{svc.get("icon","")}</span>
+                <div>
+                    <h4 style="margin:0">{svc["title"]}</h4>
+                    <span class="mp-tag" style="background:{tag_color}22; color:{tag_color};
+                        border:1px solid {tag_color}">{svc.get("tag","")}</span>
+                </div>
+            </div>
+            <p class="muted" style="margin:8px 0">{svc["description"]}</p>
+            <ul class="factors">{specs_html}</ul>
+            <div style="margin-top:14px">
+                <a href="#" class="mp-btn" style="background:{tag_color}">
+                    {svc.get("contact_label", "Contato")}</a>
+            </div>
+        </div>'''
+    return f'<div class="grid-3">{cards}</div>'
+
+
+def _knowledge_section(knowledge: dict) -> str:
+    """Gera seção de conhecimento com accordions."""
+    sections = []
+
+    # ── Umidade do Solo ──
+    um = knowledge.get("umidade_solo", {})
+    if um:
+        arabica_rows = ""
+        for fase, cc, obs in um.get("arabica", {}).get("fases", []):
+            arabica_rows += f"<tr><td>{fase}</td><td style='font-weight:600; color:#26a69a'>{cc}</td><td class='muted'>{obs}</td></tr>"
+        conilon_rows = ""
+        for fase, cc, obs in um.get("conilon", {}).get("fases", []):
+            conilon_rows += f"<tr><td>{fase}</td><td style='font-weight:600; color:#ffa726'>{cc}</td><td class='muted'>{obs}</td></tr>"
+
+        sections.append(f'''<details class="knowledge-section" open>
+            <summary>&#128167; {um.get("title","Umidade do Solo")}</summary>
+            <div style="padding:16px 0">
+                <p class="muted" style="margin-bottom:16px">{um.get("intro","")}</p>
+                <div class="grid-2">
+                    <div class="card">
+                        <h4 style="color:#26a69a">Arabica</h4>
+                        <div class="muted small" style="margin-bottom:8px">
+                            Faixa ideal: <strong style="color:#26a69a">{um.get("arabica",{}).get("faixa_ideal","")}</strong><br>
+                            {um.get("arabica",{}).get("ponto_murcha","")}<br>
+                            {um.get("arabica",{}).get("excesso","")}
+                        </div>
+                        <table class="tbl">
+                            <thead><tr><th>Fase</th><th>Umidade</th><th>Observacao</th></tr></thead>
+                            <tbody>{arabica_rows}</tbody></table>
+                    </div>
+                    <div class="card">
+                        <h4 style="color:#ffa726">Conilon / Robusta</h4>
+                        <div class="muted small" style="margin-bottom:8px">
+                            Faixa ideal: <strong style="color:#ffa726">{um.get("conilon",{}).get("faixa_ideal","")}</strong><br>
+                            {um.get("conilon",{}).get("nota","")}
+                        </div>
+                        <table class="tbl">
+                            <thead><tr><th>Fase</th><th>Umidade</th><th>Observacao</th></tr></thead>
+                            <tbody>{conilon_rows}</tbody></table>
+                    </div>
+                </div>
+            </div>
+        </details>''')
+
+    # ── Adubação ──
+    ad = knowledge.get("adubacao", {})
+    if ad:
+        macro_rows = ""
+        for nome, dose, obs in ad.get("macronutrientes", []):
+            macro_rows += f"<tr><td style='font-weight:600'>{nome}</td><td>{dose}</td><td class='muted'>{obs}</td></tr>"
+        micro_rows = ""
+        for nome, dose, obs in ad.get("micronutrientes", []):
+            micro_rows += f"<tr><td style='font-weight:600'>{nome}</td><td>{dose}</td><td class='muted'>{obs}</td></tr>"
+        form_rows = ""
+        for formula, uso in ad.get("formulacoes", []):
+            form_rows += f"<tr><td style='font-weight:600; color:#4fc3f7'>{formula}</td><td class='muted'>{uso}</td></tr>"
+
+        sections.append(f'''<details class="knowledge-section">
+            <summary>&#127793; {ad.get("title","Adubacao")}</summary>
+            <div style="padding:16px 0">
+                <div class="card" style="margin-bottom:16px; border-left:4px solid #ffa726">
+                    <h4>Calagem</h4>
+                    <p class="muted">{ad.get("calagem","")}</p>
+                </div>
+                <h4>Macronutrientes</h4>
+                <table class="tbl" style="margin-bottom:16px">
+                    <thead><tr><th>Nutriente</th><th>Dose</th><th>Observacao</th></tr></thead>
+                    <tbody>{macro_rows}</tbody></table>
+                <h4>Micronutrientes (aplicacao foliar)</h4>
+                <table class="tbl" style="margin-bottom:16px">
+                    <thead><tr><th>Nutriente</th><th>Dose</th><th>Importancia</th></tr></thead>
+                    <tbody>{micro_rows}</tbody></table>
+                <div class="grid-2">
+                    <div class="card">
+                        <h4>Formulacoes Comuns</h4>
+                        <table class="tbl">
+                            <thead><tr><th>NPK</th><th>Uso</th></tr></thead>
+                            <tbody>{form_rows}</tbody></table>
+                    </div>
+                    <div class="card">
+                        <h4>Adubacao Organica</h4>
+                        <p class="muted">{ad.get("organica","")}</p>
+                        <div class="card" style="margin-top:12px; background:#16213e">
+                            <div class="muted small"><strong style="color:#ffa726">Epoca:</strong> {ad.get("epoca","")}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </details>''')
+
+    # ── Irrigação ──
+    ir = knowledge.get("irrigacao", {})
+    if ir:
+        sys_cards = ""
+        for nome, efic, desc in ir.get("sistemas", []):
+            sys_cards += f'''<div class="mini-card" style="flex:1; min-width:200px">
+                <div style="font-weight:600; color:#4fc3f7; margin-bottom:4px">{nome}</div>
+                <div style="font-size:.9em; color:#26a69a; margin-bottom:6px">Eficiencia: {efic}</div>
+                <div class="muted small">{desc}</div></div>'''
+        manejo_items = ""
+        for titulo, desc in ir.get("manejo", []):
+            manejo_items += f'''<div class="news-item">
+                <div style="font-weight:600; color:#4fc3f7">{titulo}</div>
+                <div class="muted small">{desc}</div></div>'''
+
+        sections.append(f'''<details class="knowledge-section">
+            <summary>&#128167; {ir.get("title","Irrigacao")}</summary>
+            <div style="padding:16px 0">
+                <h4>Sistemas de Irrigacao</h4>
+                <div class="row" style="gap:12px; flex-wrap:wrap; margin-bottom:16px">{sys_cards}</div>
+                <h4>Manejo da Irrigacao</h4>
+                {manejo_items}
+            </div>
+        </details>''')
+
+    # ── Boas Práticas ──
+    bp = knowledge.get("boas_praticas", {})
+    if bp:
+        # Podas
+        poda_rows = ""
+        for tipo, como, obs in bp.get("podas", []):
+            poda_rows += f"<tr><td style='font-weight:600'>{tipo}</td><td>{como}</td><td class='muted'>{obs}</td></tr>"
+        # Pragas
+        praga_items = ""
+        for nome, controle in bp.get("pragas_doencas", []):
+            praga_items += f'''<div class="news-item">
+                <div style="font-weight:600; color:#ef5350">{nome}</div>
+                <div class="muted small">{controle}</div></div>'''
+        # Colheita
+        colheita_items = ""
+        for titulo, desc in bp.get("colheita", []):
+            colheita_items += f'''<div class="mini-card" style="flex:1; min-width:200px">
+                <div style="font-weight:600; color:#26a69a; margin-bottom:4px">{titulo}</div>
+                <div class="muted small">{desc}</div></div>'''
+        # Espaçamento
+        esp_rows = ""
+        for tipo, medidas, densidade in bp.get("espacamento", []):
+            esp_rows += f"<tr><td style='font-weight:600'>{tipo}</td><td>{medidas}</td><td class='muted'>{densidade}</td></tr>"
+
+        sections.append(f'''<details class="knowledge-section">
+            <summary>&#127807; {bp.get("title","Boas Praticas")}</summary>
+            <div style="padding:16px 0">
+                <div class="grid-2" style="margin-bottom:16px">
+                    <div class="card">
+                        <h4>Tipos de Poda</h4>
+                        <table class="tbl">
+                            <thead><tr><th>Tipo</th><th>Como</th><th>Quando/Obs</th></tr></thead>
+                            <tbody>{poda_rows}</tbody></table>
+                    </div>
+                    <div class="card">
+                        <h4>Espacamento</h4>
+                        <table class="tbl">
+                            <thead><tr><th>Tipo</th><th>Medidas</th><th>Densidade</th></tr></thead>
+                            <tbody>{esp_rows}</tbody></table>
+                    </div>
+                </div>
+                <h4>Pragas e Doencas</h4>
+                {praga_items}
+                <h4 style="margin-top:16px">Colheita e Pos-colheita</h4>
+                <div class="row" style="gap:12px; flex-wrap:wrap">{colheita_items}</div>
+            </div>
+        </details>''')
+
+    return "\n".join(sections)
+
+
 # ──────────────────────────────────────────────────────────────────
 # Main generator
 # ──────────────────────────────────────────────────────────────────
@@ -681,6 +876,8 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
     season_card_html = _season_card(season)
     ice_cot_html = _ice_cot_card(ice_stocks, cot)
     fert_section_html = _fertilizer_section(fert_data, fert_impact, fert_news)
+    marketplace_html = _marketplace_section(MARKETPLACE_SERVICES)
+    knowledge_html = _knowledge_section(COFFEE_KNOWLEDGE)
 
     sent_stats = lambda s: f'''<div class="row center" style="gap:20px; padding:8px">
         <span class="bull">Alta: {s.get("bullish",0)}</span>
@@ -750,6 +947,17 @@ h4{{color:#4fc3f7;margin-bottom:8px}}
 .mini-card{{background:#1a1a2e;border-radius:8px;padding:14px 18px;border:1px solid #2a2a4a;min-width:140px}}
 .alert{{background:#b71c1c33;border:1px solid #ef5350;border-radius:6px;padding:8px 12px;
     margin-top:8px;font-size:.9em;color:#ef5350}}
+.mp-tag{{display:inline-block;padding:2px 10px;border-radius:12px;font-size:.75em;font-weight:600;margin-top:4px}}
+.mp-btn{{display:inline-block;padding:8px 20px;border-radius:8px;color:#fff;text-decoration:none;
+    font-weight:600;font-size:.9em;transition:opacity .2s}}
+.mp-btn:hover{{opacity:.85}}
+.knowledge-section{{margin-bottom:12px}}
+.knowledge-section summary{{cursor:pointer;padding:14px 20px;background:#1a1a2e;border:1px solid #2a2a4a;
+    border-radius:8px;color:#4fc3f7;font-size:1.1em;font-weight:600;list-style:none}}
+.knowledge-section summary::-webkit-details-marker{{display:none}}
+.knowledge-section summary::before{{content:'\\25B6  '}}
+.knowledge-section[open] summary::before{{content:'\\25BC  '}}
+.knowledge-section[open] summary{{border-radius:8px 8px 0 0;border-bottom:2px solid #4fc3f7}}
 footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px;border-top:1px solid #2a2a4a}}
 @media(max-width:768px){{
     .grid-2,.grid-3,.news-grid{{grid-template-columns:1fr}}
@@ -810,6 +1018,10 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     {fert_section_html}
     {fert_chart}
 
+    <!-- MARKETPLACE -->
+    <h2 class="sec">&#128736; Servicos e Equipamentos para Cafeicultura</h2>
+    {marketplace_html}
+
     <!-- CLIMA -->
     <h2 class="sec">&#127782;&#65039; Clima nas Regioes Produtoras</h2>
     {weather_cards_html}
@@ -822,6 +1034,7 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
         <div class="tab-btn" onclick="switchTab('robusta')">&#9749; Robusta</div>
         <div class="tab-btn" onclick="switchTab('usdbrl')">&#128181; USD/BRL</div>
         <div class="tab-btn" onclick="switchTab('news')">&#128240; Noticias</div>
+        <div class="tab-btn" onclick="switchTab('conhecimento')">&#128218; Guia do Cafeicultor</div>
     </div>
 
     <div id="tab-arabica" class="tab-content active">
@@ -859,6 +1072,14 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
         {general_news_html}
     </div>
 
+    <div id="tab-conhecimento" class="tab-content">
+        <div style="margin-bottom:20px">
+            <p class="muted">Guia pratico para o cafeicultor — umidade do solo, adubacao,
+            irrigacao e boas praticas de cultivo para Arabica e Conilon.</p>
+        </div>
+        {knowledge_html}
+    </div>
+
 </div>
 
 <footer>
@@ -872,7 +1093,7 @@ function switchTab(name){{
     document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     document.getElementById('tab-'+name).classList.add('active');
-    const tabs=['arabica','robusta','usdbrl','news'];
+    const tabs=['arabica','robusta','usdbrl','news','conhecimento'];
     document.querySelectorAll('.tab-btn')[tabs.indexOf(name)].classList.add('active');
     window.dispatchEvent(new Event('resize'));
 }}
