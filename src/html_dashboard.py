@@ -959,6 +959,36 @@ h4{{color:#4fc3f7;margin-bottom:8px}}
 .knowledge-section[open] summary::before{{content:'\\25BC  '}}
 .knowledge-section[open] summary{{border-radius:8px 8px 0 0;border-bottom:2px solid #4fc3f7}}
 footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px;border-top:1px solid #2a2a4a}}
+.chat-toggle{{position:fixed;bottom:24px;right:24px;width:60px;height:60px;border-radius:50%;
+    background:linear-gradient(135deg,#4fc3f7,#26a69a);border:none;cursor:pointer;
+    box-shadow:0 4px 20px rgba(79,195,247,.4);z-index:9999;transition:transform .2s;
+    display:flex;align-items:center;justify-content:center;font-size:1.6em}}
+.chat-toggle:hover{{transform:scale(1.1)}}
+.chat-window{{position:fixed;bottom:96px;right:24px;width:400px;max-height:550px;
+    background:#1a1a2e;border:1px solid #4fc3f7;border-radius:16px;z-index:9998;
+    display:none;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}}
+.chat-window.open{{display:flex}}
+.chat-header{{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:16px 20px;
+    border-bottom:1px solid #2a2a4a;display:flex;justify-content:space-between;align-items:center}}
+.chat-header h4{{color:#4fc3f7;margin:0;font-size:1em}}
+.chat-header .chat-sub{{color:#888;font-size:.75em}}
+.chat-close{{background:none;border:none;color:#888;cursor:pointer;font-size:1.2em;padding:4px}}
+.chat-close:hover{{color:#ef5350}}
+.chat-messages{{flex:1;overflow-y:auto;padding:16px;max-height:380px;display:flex;flex-direction:column;gap:12px}}
+.chat-msg{{padding:10px 14px;border-radius:12px;font-size:.9em;line-height:1.5;max-width:85%;word-wrap:break-word}}
+.chat-msg.user{{background:#16213e;color:#e0e0e0;align-self:flex-end;border-bottom-right-radius:4px}}
+.chat-msg.assistant{{background:#0d2818;color:#e0e0e0;align-self:flex-start;border-bottom-left-radius:4px;
+    border:1px solid #26a69a33}}
+.chat-msg.typing{{color:#888;font-style:italic}}
+.chat-input-area{{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #2a2a4a;background:#16213e}}
+.chat-input{{flex:1;background:#1a1a2e;border:1px solid #2a2a4a;border-radius:8px;padding:10px 14px;
+    color:#e0e0e0;font-size:.9em;outline:none;resize:none;font-family:inherit}}
+.chat-input:focus{{border-color:#4fc3f7}}
+.chat-send{{background:#26a69a;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;
+    color:#fff;font-weight:600;font-size:.9em;transition:background .2s}}
+.chat-send:hover{{background:#2bbbad}}
+.chat-send:disabled{{background:#2a2a4a;cursor:not-allowed}}
+@media(max-width:768px){{.chat-window{{width:calc(100vw - 32px);right:16px;bottom:88px;max-height:70vh}}}}
 @media(max-width:768px){{
     .grid-2,.grid-3,.news-grid{{grid-template-columns:1fr}}
     .big-num{{font-size:1.6em}}header h1{{font-size:1.3em}}
@@ -1089,6 +1119,27 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     Analise: Tecnica + Sentimento + Sazonalidade + Clima + Spread + Estoques + Fertilizantes + COT
 </footer>
 
+<!-- CHAT WIDGET -->
+<button class="chat-toggle" onclick="toggleChat()" title="Cafeza AI — Consultor Agronomico">&#9749;</button>
+<div class="chat-window" id="chatWindow">
+    <div class="chat-header">
+        <div>
+            <h4>&#9749; Cafeza AI</h4>
+            <div class="chat-sub">Consultor Agronomico Inteligente</div>
+        </div>
+        <button class="chat-close" onclick="toggleChat()">&#10005;</button>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg assistant">Ola! Sou o <strong>Cafeza AI</strong>, seu consultor agronomico especialista em cafeicultura. &#127793;<br><br>
+        Pergunte sobre cultivo, adubacao, irrigacao, pragas, colheita, variedades e tudo sobre cafe Arabica e Conilon!</div>
+    </div>
+    <div class="chat-input-area">
+        <textarea class="chat-input" id="chatInput" rows="1" placeholder="Pergunte sobre cafe..."
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){{event.preventDefault();sendChat()}}"></textarea>
+        <button class="chat-send" id="chatSend" onclick="sendChat()">Enviar</button>
+    </div>
+</div>
+
 <script>
 function switchTab(name){{
     document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
@@ -1097,6 +1148,57 @@ function switchTab(name){{
     const tabs=['arabica','robusta','usdbrl','news','conhecimento'];
     document.querySelectorAll('.tab-btn')[tabs.indexOf(name)].classList.add('active');
     window.dispatchEvent(new Event('resize'));
+}}
+
+const CHAT_API = 'https://cafeza.vercel.app/api/chat';
+let chatHistory = [];
+
+function toggleChat(){{
+    document.getElementById('chatWindow').classList.toggle('open');
+    if(document.getElementById('chatWindow').classList.contains('open'))
+        document.getElementById('chatInput').focus();
+}}
+
+function addMessage(role, content){{
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    div.innerHTML = content.replace(/\\n/g, '<br>');
+    document.getElementById('chatMessages').appendChild(div);
+    document.getElementById('chatMessages').scrollTop = 999999;
+    return div;
+}}
+
+async function sendChat(){{
+    const input = document.getElementById('chatInput');
+    const btn = document.getElementById('chatSend');
+    const text = input.value.trim();
+    if(!text) return;
+
+    input.value = '';
+    btn.disabled = true;
+    addMessage('user', text);
+    chatHistory.push({{role:'user', content:text}});
+
+    const typing = addMessage('assistant typing', 'Pensando...');
+
+    try{{
+        const res = await fetch(CHAT_API, {{
+            method:'POST',
+            headers:{{'Content-Type':'application/json'}},
+            body: JSON.stringify({{messages: chatHistory}})
+        }});
+        const data = await res.json();
+        if(data.error) throw new Error(data.error);
+
+        typing.remove();
+        addMessage('assistant', data.reply);
+        chatHistory.push({{role:'assistant', content:data.reply}});
+    }}catch(err){{
+        typing.remove();
+        addMessage('assistant', 'Desculpe, ocorreu um erro: ' + err.message);
+    }}
+    btn.disabled = false;
+    input.focus();
 }}
 </script>
 </body>
