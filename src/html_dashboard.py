@@ -901,6 +901,11 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="refresh" content="300">
+<meta name="description" content="Cafeza — Cultivar Inteligente. Dashboard completo do mercado de cafe: precos, analise tecnica, clima, consultoria AI.">
+<meta property="og:title" content="Cafeza — Cultivar Inteligente">
+<meta property="og:description" content="Dashboard do mercado de cafe brasileiro. Precos em tempo real, analise tecnica, clima, guia do cafeicultor e consultoria AI.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9749;</text></svg>">
 <title>Cafeza — Cultivar Inteligente</title>
 <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
 <style>
@@ -908,9 +913,17 @@ def generate_html_dashboard(output_path: str = "dashboard.html"):
 body{{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f23;color:#e0e0e0;line-height:1.6}}
 .container{{max-width:1440px;margin:0 auto;padding:20px}}
 header{{text-align:center;padding:30px 20px;background:linear-gradient(135deg,#1a1a2e,#16213e);
-    border-bottom:2px solid #4fc3f7;margin-bottom:24px}}
+    border-bottom:2px solid #4fc3f7;margin-bottom:0;position:sticky;top:0;z-index:100}}
 header h1{{font-size:2em;color:#4fc3f7}}
 header .sub{{color:#888;margin-top:8px;font-size:.9em}}
+.topnav{{background:#16213e;padding:10px 20px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;
+    border-bottom:1px solid #2a2a4a;margin-bottom:24px;position:sticky;top:0;z-index:99}}
+.topnav a{{color:#888;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:.85em;
+    transition:all .2s;white-space:nowrap}}
+.topnav a:hover{{color:#4fc3f7;background:#1a1a2e}}
+.update-badge{{display:inline-block;background:#26a69a33;border:1px solid #26a69a;color:#26a69a;
+    padding:4px 12px;border-radius:20px;font-size:.8em;margin-top:8px;animation:pulse 2s ease-in-out}}
+@keyframes pulse{{0%{{opacity:.5}}50%{{opacity:1}}100%{{opacity:.5}}}}
 h2.sec{{font-size:1.4em;color:#4fc3f7;margin:32px 0 16px;padding-bottom:8px;border-bottom:1px solid #2a2a4a}}
 h3{{color:#4fc3f7;margin-bottom:12px;font-size:1.1em}}
 h4{{color:#4fc3f7;margin-bottom:8px}}
@@ -1002,16 +1015,29 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
 <header>
     <h1>&#9749; Cafeza</h1>
     <div style="color:#4fc3f7; font-size:1.1em; font-weight:300; letter-spacing:2px; margin-top:4px">CULTIVAR INTELIGENTE</div>
-    <div class="sub">Robusta (Conilon) &amp; Arabica &mdash; Atualizado em {now}</div>
+    <div class="update-badge">&#128994; Atualizado em {now} (BRT)</div>
 </header>
+<nav class="topnav">
+    <a href="#sec-fisico">&#128200; Fisico</a>
+    <a href="#sec-futuros">&#128202; Futuros</a>
+    <a href="#sec-commodities">&#128279; Commodities</a>
+    <a href="#sec-spread">&#8646; Spread</a>
+    <a href="#sec-recomendacao">&#127919; Recomendacao</a>
+    <a href="#sec-safra">&#128197; Safra</a>
+    <a href="#sec-estoques">&#128230; Estoques</a>
+    <a href="#sec-fertilizantes">&#129716; Fertilizantes</a>
+    <a href="#sec-marketplace">&#128736; Servicos</a>
+    <a href="#sec-clima">&#127782; Clima</a>
+    <a href="#sec-analise">&#128202; Analise</a>
+</nav>
 <div class="container">
 
     <!-- PRECOS MERCADO FISICO (referencia) -->
-    <h2 class="sec">&#128200; Precos do Dia — Mercado Fisico (R$/saca 60kg)</h2>
+    <h2 class="sec" id="sec-fisico">&#128200; Precos do Dia — Mercado Fisico (R$/saca 60kg)</h2>
     {physical_html}
 
     <!-- PRECOS FUTUROS + DOLAR -->
-    <h2 class="sec">&#128202; Precos Futuros (convertidos) e Cambio</h2>
+    <h2 class="sec" id="sec-futuros">&#128202; Precos Futuros (convertidos) e Cambio</h2>
     <div class="grid-3">
         {_price_card("Arabica Futuros (NYBOT) — R$/saca", arabica_brl)}
         {_price_card("Robusta Futuros (ICE) — R$/saca", robusta_brl)}
@@ -1019,15 +1045,15 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     </div>
 
     <!-- COMMODITIES CORRELACIONADAS -->
-    <h2 class="sec">&#128279; Commodities Correlacionadas</h2>
+    <h2 class="sec" id="sec-commodities">&#128279; Commodities Correlacionadas</h2>
     {commodity_html}
 
     <!-- SPREAD -->
-    <h2 class="sec">&#8646; Spread Arabica / Robusta</h2>
+    <h2 class="sec" id="sec-spread">&#8646; Spread Arabica / Robusta</h2>
     {spread_html}
 
     <!-- RECOMENDACOES -->
-    <h2 class="sec">&#127919; Posicao Recomendada</h2>
+    <h2 class="sec" id="sec-recomendacao">&#127919; Posicao Recomendada</h2>
     <div class="grid-2">
         {_rec_card("Arabica", arabica_rec)}
         {_rec_card("Robusta / Conilon", robusta_rec)}
@@ -1038,30 +1064,30 @@ footer{{text-align:center;padding:24px;color:#555;font-size:.8em;margin-top:40px
     </div>
 
     <!-- SAZONALIDADE -->
-    <h2 class="sec">&#128197; Sazonalidade e Safra</h2>
+    <h2 class="sec" id="sec-safra">&#128197; Sazonalidade e Safra</h2>
     {season_card_html}
     {season_chart}
 
     <!-- ESTOQUES + COT -->
-    <h2 class="sec">&#128230; Estoques ICE &amp; Posicoes de Fundos</h2>
+    <h2 class="sec" id="sec-estoques">&#128230; Estoques ICE &amp; Posicoes de Fundos</h2>
     {ice_cot_html}
 
     <!-- FERTILIZANTES -->
-    <h2 class="sec">&#129716; Fertilizantes e Insumos Agricolas</h2>
+    <h2 class="sec" id="sec-fertilizantes">&#129716; Fertilizantes e Insumos Agricolas</h2>
     {fert_section_html}
     {fert_chart}
 
     <!-- MARKETPLACE -->
-    <h2 class="sec">&#128736; Servicos e Equipamentos para Cafeicultura</h2>
+    <h2 class="sec" id="sec-marketplace">&#128736; Servicos e Equipamentos para Cafeicultura</h2>
     {marketplace_html}
 
     <!-- CLIMA -->
-    <h2 class="sec">&#127782;&#65039; Clima nas Regioes Produtoras</h2>
+    <h2 class="sec" id="sec-clima">&#127782;&#65039; Clima nas Regioes Produtoras</h2>
     {weather_cards_html}
     {weather_chart}
 
     <!-- TABS ANALISE -->
-    <h2 class="sec">&#128202; Analise Detalhada</h2>
+    <h2 class="sec" id="sec-analise">&#128202; Analise Detalhada</h2>
     <div class="tabs">
         <div class="tab-btn active" onclick="switchTab('arabica')">&#9749; Arabica</div>
         <div class="tab-btn" onclick="switchTab('robusta')">&#9749; Robusta</div>
