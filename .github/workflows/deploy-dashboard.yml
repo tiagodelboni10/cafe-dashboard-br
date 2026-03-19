@@ -2,8 +2,8 @@ name: Gerar e publicar dashboard de cafe
 
 on:
   schedule:
-    # Roda a cada 30 min das 06:00 as 20:00 BRT (09:00-23:00 UTC), seg-sab
-    - cron: '*/30 9-23 * * 1-6'
+    # Roda a cada 15 min das 06:00 as 20:00 BRT (09:00-23:00 UTC), seg-sab
+    - cron: '*/15 9-23 * * 1-6'
   workflow_dispatch: # permite rodar manualmente
 
 permissions:
