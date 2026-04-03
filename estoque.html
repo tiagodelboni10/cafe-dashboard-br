@@ -56,7 +56,9 @@ tr.R{background:rgba(255,60,60,.1)}tr.A{background:rgba(255,170,0,.07)}tr.E{back
 /* Cards */
 .cds{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .cd{background:#0e1628;border-radius:12px;padding:16px;border:1px solid #1e3050}
-.cd h3{color:#4fc3f7;font-size:.92em;margin-bottom:8px}
+.cd h3{color:#4fc3f7;font-size:.92em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.cd:hover{border-color:#4fc3f7;box-shadow:0 2px 12px rgba(79,195,247,.15)}
+.detail-panel{grid-column:1/-1;background:#0a1020;border:1px solid #1e3050;border-radius:0 0 10px 10px;padding:14px;margin-top:-1px}
 .cd .sts{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;font-size:.8em}
 .cd .sts b{font-weight:700}
 .cd .br{height:5px;background:#1a1a30;border-radius:3px;display:flex;overflow:hidden;margin-top:6px}
@@ -87,7 +89,7 @@ table{font-size:.7em}td,th{padding:6px 4px}
   <h1>MERKAL - Gestao de Estoque</h1>
   <small>Curva A = 80% do faturamento | DDV = Dias De Venda (quanto tempo o estoque dura)</small>
  </div>
- <div class="upd">Atualizado: 03/04/2026 06:15</div>
+ <div class="upd">Atualizado: 03/04/2026 06:21</div>
 </div>
 <div class="wrap">
 
@@ -320,13 +322,72 @@ function rTodos(data){
 let sC=-1,sA=true;
 function srt(c){if(sC===c)sA=!sA;else{sC=c;sA=true};const ks=['status','curva','cod','desc','setor','forn','est','vmd','ddv','lt','fat30d','ult_entrada'];const k=ks[c];let d=gF();d.sort((a,b)=>{let va=a[k],vb=b[k];if(va===null)va=sA?999999:-999999;if(vb===null)vb=sA?999999:-999999;if(typeof va==='string')return sA?va.localeCompare(vb):vb.localeCompare(va);return sA?va-vb:vb-va});rTodos(d)}
 
-// SETORES
-function rSet(){const c=document.getElementById('cds-set');c.innerHTML=Object.entries(SET).map(([n,s])=>{const t=s.total||1;return'<div class="cd"><h3>'+n+'</h3><div class="sts"><span><b style="color:#ff4444">'+s.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+s.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+s.ok+'</b> ok</span><span><b style="color:#ff66ff">'+s.excesso+'</b> exc</span></div><div style="font-size:.78em;color:#888">'+s.total+' itens | '+R(s.valor_estoque)+'</div>'+(s.valor_excesso>0?'<div style="font-size:.78em;color:#ff66ff">'+R(s.valor_excesso)+' em excesso</div>':'')+'<div class="br"><div style="width:'+(s.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(s.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(s.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(s.excesso/t*100)+'%;background:#ff66ff"></div></div></div>'}).join('')}
+// SETORES - clicavel com lista de produtos
+function rSet(){
+ const c=document.getElementById('cds-set');
+ c.innerHTML=Object.entries(SET).map(([n,s],i)=>{
+  const t=s.total||1;const uid='set-'+i;
+  return'<div class="cd" style="cursor:pointer" onclick="toggleDetail(''+uid+'')">'+
+   '<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'+
+   '<div class="sts"><span><b style="color:#ff4444">'+s.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+s.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+s.ok+'</b> ok</span><span><b style="color:#ff66ff">'+s.excesso+'</b> exc</span></div>'+
+   '<div style="font-size:.78em;color:#888">'+s.total+' itens | '+R(s.valor_estoque)+'</div>'+
+   (s.valor_excesso>0?'<div style="font-size:.78em;color:#ff66ff">'+R(s.valor_excesso)+' em excesso</div>':'')+
+   '<div class="br"><div style="width:'+(s.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(s.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(s.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(s.excesso/t*100)+'%;background:#ff66ff"></div></div>'+
+   '</div>'+
+   '<div id="'+uid+'" class="detail-panel" style="display:none" data-type="setor" data-name="'+n.replace(/"/g,'&quot;')+'"></div>';
+ }).join('');
+}
 
-// FORNECEDORES
+// FORNECEDORES - clicavel com lista de produtos
 function rForn(){rFL(Object.entries(FRN))}
 function fforn(){const q=document.getElementById('sf').value.toLowerCase();rFL(Object.entries(FRN).filter(([n])=>n.toLowerCase().includes(q)))}
-function rFL(e){const c=document.getElementById('cds-forn');c.innerHTML=e.map(([n,f])=>{const t=f.total||1;return'<div class="cd"><h3>'+n+'</h3><div class="sts"><span><b style="color:#ff4444">'+f.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+f.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+f.ok+'</b> ok</span><span><b style="color:#ff66ff">'+f.excesso+'</b> exc</span></div><div style="font-size:.78em;color:#888">'+f.total+' itens | ~'+f.lead_time+'d entrega | '+R(f.valor_estoque)+'</div><div class="br"><div style="width:'+(f.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(f.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(f.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(f.excesso/t*100)+'%;background:#ff66ff"></div></div></div>'}).join('')}
+function rFL(e){
+ const c=document.getElementById('cds-forn');
+ c.innerHTML=e.map(([n,f],i)=>{
+  const t=f.total||1;const uid='forn-'+i;
+  return'<div class="cd" style="cursor:pointer" onclick="toggleDetail(''+uid+'')">'+
+   '<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'+
+   '<div class="sts"><span><b style="color:#ff4444">'+f.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+f.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+f.ok+'</b> ok</span><span><b style="color:#ff66ff">'+f.excesso+'</b> exc</span></div>'+
+   '<div style="font-size:.78em;color:#888">'+f.total+' itens | ~'+f.lead_time+'d entrega | '+R(f.valor_estoque)+'</div>'+
+   '<div class="br"><div style="width:'+(f.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(f.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(f.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(f.excesso/t*100)+'%;background:#ff66ff"></div></div>'+
+   '</div>'+
+   '<div id="'+uid+'" class="detail-panel" style="display:none" data-type="forn" data-name="'+n.replace(/"/g,'&quot;')+'"></div>';
+ }).join('');
+}
+
+// Toggle detalhe de setor/fornecedor
+function toggleDetail(uid){
+ const el=document.getElementById(uid);
+ if(!el)return;
+ if(el.style.display!=='none'){el.style.display='none';return}
+ // Carregar produtos se vazio
+ if(!el.innerHTML){
+  const tp=el.dataset.type;const nm=el.dataset.name;
+  let prods;
+  if(tp==='setor')prods=D.filter(x=>x.setor===nm);
+  else prods=D.filter(x=>x.forn===nm);
+  prods.sort((a,b)=>{
+   const o={ruptura:0,negativo:1,alerta:2,ok:3,excesso:4};
+   if((o[a.status]||3)!==(o[b.status]||3))return(o[a.status]||3)-(o[b.status]||3);
+   return a.curva.localeCompare(b.curva)||(b.fat30d-a.fat30d);
+  });
+  el.innerHTML='<div class="tw" style="margin-top:10px"><table><thead><tr>'+
+   '<th>Status</th><th>Curva</th><th>Cod.</th><th>Produto</th>'+
+   (tp==='setor'?'<th>Categoria</th><th>Fornecedor</th>':'<th>Setor</th><th>Categoria</th>')+
+   '<th>Estoque</th><th>VMD</th><th>DDV</th><th>Fat. 30d</th><th>Ult.Entrada</th>'+
+   '</tr></thead><tbody>'+
+   prods.map(x=>
+    '<tr class="'+({ruptura:'R',alerta:'A',excesso:'E',negativo:'N'}[x.status]||'')+'">'+
+    '<td>'+sb(x.status)+'</td><td>'+cb(x.curva)+'</td><td>'+mono(x.cod)+'</td>'+
+    '<td>'+x.desc+'</td>'+
+    (tp==='setor'?'<td>'+x.cat+'</td><td>'+x.forn+'</td>':'<td>'+x.setor+'</td><td>'+x.cat+'</td>')+
+    '<td>'+x.est.toFixed(1)+'</td><td>'+x.vmd.toFixed(1)+'</td>'+
+    '<td>'+dv(x.ddv,x.ddv_ideal,x.lt)+'</td><td>'+R(x.fat30d)+'</td><td>'+x.ult_entrada+'</td></tr>'
+   ).join('')+
+   '</tbody></table></div>';
+ }
+ el.style.display='block';
+}
 
 // EXCESSO
 function rExc(){const d=D.filter(x=>x.status==='excesso').sort((a,b)=>{const ea=Math.max(0,a.est-a.vmd*a.ddv_ideal)*(a.est>0?a.valor/a.est:0);const eb=Math.max(0,b.est-b.vmd*b.ddv_ideal)*(b.est>0?b.valor/b.est:0);return eb-ea});document.getElementById('t-exc').innerHTML=d.map(x=>{const iq=x.vmd*x.ddv_ideal,ex=Math.max(0,x.est-iq),cu=x.est>0?x.valor/x.est:0,vp=ex*cu;return'<tr class="E"><td>'+cb(x.curva)+'</td><td>'+mono(x.cod)+'</td><td>'+x.desc+'</td><td>'+x.setor+'</td><td>'+x.forn+'</td><td>'+x.est.toFixed(0)+'</td><td>'+x.vmd.toFixed(1)+'</td><td>'+(x.ddv!==null?x.ddv.toFixed(0)+'d':'-')+'</td><td>'+x.ddv_ideal+'d</td><td style="color:#ff66ff;font-weight:700">'+ex.toFixed(0)+'</td><td style="color:#ff66ff;font-weight:700">'+R(vp)+'</td></tr>'}).join('')}
