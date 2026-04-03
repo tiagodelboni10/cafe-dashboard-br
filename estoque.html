@@ -89,7 +89,7 @@ table{font-size:.7em}td,th{padding:6px 4px}
   <h1>MERKAL - Gestao de Estoque</h1>
   <small>Curva A = 80% do faturamento | DDV = Dias De Venda (quanto tempo o estoque dura)</small>
  </div>
- <div class="upd">Atualizado: 03/04/2026 06:21</div>
+ <div class="upd">Atualizado: 03/04/2026 06:25</div>
 </div>
 <div class="wrap">
 
@@ -327,14 +327,14 @@ function rSet(){
  const c=document.getElementById('cds-set');
  c.innerHTML=Object.entries(SET).map(([n,s],i)=>{
   const t=s.total||1;const uid='set-'+i;
-  return'<div class="cd" style="cursor:pointer" onclick="toggleDetail(''+uid+'')">'+
+  return '<div class="cd" style="cursor:pointer" onclick="toggleDetail(this.nextElementSibling,'setor',''+n.replace(/'/g,"\\'")+'')">'+
    '<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'+
    '<div class="sts"><span><b style="color:#ff4444">'+s.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+s.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+s.ok+'</b> ok</span><span><b style="color:#ff66ff">'+s.excesso+'</b> exc</span></div>'+
    '<div style="font-size:.78em;color:#888">'+s.total+' itens | '+R(s.valor_estoque)+'</div>'+
    (s.valor_excesso>0?'<div style="font-size:.78em;color:#ff66ff">'+R(s.valor_excesso)+' em excesso</div>':'')+
    '<div class="br"><div style="width:'+(s.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(s.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(s.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(s.excesso/t*100)+'%;background:#ff66ff"></div></div>'+
    '</div>'+
-   '<div id="'+uid+'" class="detail-panel" style="display:none" data-type="setor" data-name="'+n.replace(/"/g,'&quot;')+'"></div>';
+   '<div class="detail-panel" style="display:none"></div>';
  }).join('');
 }
 
@@ -344,25 +344,23 @@ function fforn(){const q=document.getElementById('sf').value.toLowerCase();rFL(O
 function rFL(e){
  const c=document.getElementById('cds-forn');
  c.innerHTML=e.map(([n,f],i)=>{
-  const t=f.total||1;const uid='forn-'+i;
-  return'<div class="cd" style="cursor:pointer" onclick="toggleDetail(''+uid+'')">'+
+  const t=f.total||1;
+  return '<div class="cd" style="cursor:pointer" onclick="toggleDetail(this.nextElementSibling,'forn',''+n.replace(/'/g,"\\'")+'')">'+
    '<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'+
    '<div class="sts"><span><b style="color:#ff4444">'+f.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+f.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+f.ok+'</b> ok</span><span><b style="color:#ff66ff">'+f.excesso+'</b> exc</span></div>'+
    '<div style="font-size:.78em;color:#888">'+f.total+' itens | ~'+f.lead_time+'d entrega | '+R(f.valor_estoque)+'</div>'+
    '<div class="br"><div style="width:'+(f.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(f.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(f.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(f.excesso/t*100)+'%;background:#ff66ff"></div></div>'+
    '</div>'+
-   '<div id="'+uid+'" class="detail-panel" style="display:none" data-type="forn" data-name="'+n.replace(/"/g,'&quot;')+'"></div>';
+   '<div class="detail-panel" style="display:none"></div>';
  }).join('');
 }
 
 // Toggle detalhe de setor/fornecedor
-function toggleDetail(uid){
- const el=document.getElementById(uid);
+function toggleDetail(el,tp,nm){
  if(!el)return;
+ event.stopPropagation();
  if(el.style.display!=='none'){el.style.display='none';return}
- // Carregar produtos se vazio
- if(!el.innerHTML){
-  const tp=el.dataset.type;const nm=el.dataset.name;
+ if(!el.dataset.loaded){
   let prods;
   if(tp==='setor')prods=D.filter(x=>x.setor===nm);
   else prods=D.filter(x=>x.forn===nm);
@@ -385,6 +383,7 @@ function toggleDetail(uid){
     '<td>'+dv(x.ddv,x.ddv_ideal,x.lt)+'</td><td>'+R(x.fat30d)+'</td><td>'+x.ult_entrada+'</td></tr>'
    ).join('')+
    '</tbody></table></div>';
+  el.dataset.loaded='1';
  }
  el.style.display='block';
 }
