@@ -89,7 +89,7 @@ table{font-size:.7em}td,th{padding:6px 4px}
   <h1>MERKAL - Gestao de Estoque</h1>
   <small>Curva A = 80% do faturamento | DDV = Dias De Venda (quanto tempo o estoque dura)</small>
  </div>
- <div class="upd">Atualizado: 03/04/2026 06:26</div>
+ <div class="upd">Atualizado: 03/04/2026 06:27</div>
 </div>
 <div class="wrap">
 
@@ -323,55 +323,46 @@ let sC=-1,sA=true;
 function srt(c){if(sC===c)sA=!sA;else{sC=c;sA=true};const ks=['status','curva','cod','desc','setor','forn','est','vmd','ddv','lt','fat30d','ult_entrada'];const k=ks[c];let d=gF();d.sort((a,b)=>{let va=a[k],vb=b[k];if(va===null)va=sA?999999:-999999;if(vb===null)vb=sA?999999:-999999;if(typeof va==='string')return sA?va.localeCompare(vb):vb.localeCompare(va);return sA?va-vb:vb-va});rTodos(d)}
 
 // SETORES - clicavel com lista de produtos
+var _setKeys=[];
 function rSet(){
- const c=document.getElementById('cds-set');
- const entries=Object.entries(SET);
- let h='';
+ var c=document.getElementById('cds-set');
+ var entries=Object.entries(SET);
+ _setKeys=entries.map(function(e){return e[0]});
+ c.innerHTML='';
  entries.forEach(function(e,i){
-  const n=e[0],s=e[1],t=s.total||1;
-  const card=document.createElement('div');
-  h+='<div class="cd cd-click" data-tp="setor" data-nm="'+n.replace(/"/g,'&quot;')+'">'
-   +'<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'
+  var n=e[0],s=e[1],t=s.total||1;
+  var d=document.createElement('div');d.className='cd';d.style.cursor='pointer';
+  d.setAttribute('data-idx',i);
+  d.innerHTML='<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'
    +'<div class="sts"><span><b style="color:#ff4444">'+s.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+s.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+s.ok+'</b> ok</span><span><b style="color:#ff66ff">'+s.excesso+'</b> exc</span></div>'
    +'<div style="font-size:.78em;color:#888">'+s.total+' itens | '+R(s.valor_estoque)+'</div>'
    +(s.valor_excesso>0?'<div style="font-size:.78em;color:#ff66ff">'+R(s.valor_excesso)+' em excesso</div>':'')
    +'<div class="br"><div style="width:'+(s.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(s.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(s.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(s.excesso/t*100)+'%;background:#ff66ff"></div></div>'
-   +'<div class="detail-panel" style="display:none"></div>'
-   +'</div>';
- });
- c.innerHTML=h;
- c.querySelectorAll('.cd-click').forEach(function(el){
-  el.style.cursor='pointer';
-  el.addEventListener('click',function(){
-   const dp=el.querySelector('.detail-panel');
-   toggleDetail(dp,el.dataset.tp,el.dataset.nm);
-  });
+   +'<div class="detail-panel" style="display:none"></div>';
+  d.addEventListener('click',function(){var dp=this.querySelector('.detail-panel');toggleDetail(dp,'setor',_setKeys[this.getAttribute('data-idx')])});
+  c.appendChild(d);
  });
 }
 
 // FORNECEDORES - clicavel com lista de produtos
+var _frnKeys=[];
 function rForn(){rFL(Object.entries(FRN))}
-function fforn(){const q=document.getElementById('sf').value.toLowerCase();rFL(Object.entries(FRN).filter(function(e){return e[0].toLowerCase().includes(q)}))}
+function fforn(){var q=document.getElementById('sf').value.toLowerCase();rFL(Object.entries(FRN).filter(function(e){return e[0].toLowerCase().indexOf(q)>=0}))}
 function rFL(e){
- const c=document.getElementById('cds-forn');
- let h='';
- e.forEach(function(entry){
-  const n=entry[0],f=entry[1],t=f.total||1;
-  h+='<div class="cd cd-click" data-tp="forn" data-nm="'+n.replace(/"/g,'&quot;')+'">'
-   +'<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'
+ var c=document.getElementById('cds-forn');
+ _frnKeys=e.map(function(x){return x[0]});
+ c.innerHTML='';
+ e.forEach(function(entry,i){
+  var n=entry[0],f=entry[1],t=f.total||1;
+  var d=document.createElement('div');d.className='cd';d.style.cursor='pointer';
+  d.setAttribute('data-idx',i);
+  d.innerHTML='<h3>'+n+' <span style="font-size:.7em;color:#666">&#9660;</span></h3>'
    +'<div class="sts"><span><b style="color:#ff4444">'+f.ruptura+'</b> rupt</span><span><b style="color:#ffaa00">'+f.alerta+'</b> alerta</span><span><b style="color:#44ff44">'+f.ok+'</b> ok</span><span><b style="color:#ff66ff">'+f.excesso+'</b> exc</span></div>'
    +'<div style="font-size:.78em;color:#888">'+f.total+' itens | ~'+f.lead_time+'d entrega | '+R(f.valor_estoque)+'</div>'
    +'<div class="br"><div style="width:'+(f.ruptura/t*100)+'%;background:#ff4444"></div><div style="width:'+(f.alerta/t*100)+'%;background:#ffaa00"></div><div style="width:'+(f.ok/t*100)+'%;background:#44ff44"></div><div style="width:'+(f.excesso/t*100)+'%;background:#ff66ff"></div></div>'
-   +'<div class="detail-panel" style="display:none"></div>'
-   +'</div>';
- });
- c.innerHTML=h;
- c.querySelectorAll('.cd-click').forEach(function(el){
-  el.style.cursor='pointer';
-  el.addEventListener('click',function(){
-   const dp=el.querySelector('.detail-panel');
-   toggleDetail(dp,el.dataset.tp,el.dataset.nm);
-  });
+   +'<div class="detail-panel" style="display:none"></div>';
+  d.addEventListener('click',function(){var dp=this.querySelector('.detail-panel');toggleDetail(dp,'forn',_frnKeys[this.getAttribute('data-idx')])});
+  c.appendChild(d);
  });
 }
 
