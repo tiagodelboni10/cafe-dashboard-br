@@ -60,7 +60,7 @@ def main():
     # === ETAPA 1: Consulta ao banco ===
     logger.info("ETAPA 1: Consultando banco de dados...")
     try:
-        from consulta_db import consultar_vendas_por_produto, obter_data_mais_recente
+        from consulta_db import consultar_vendas_por_produto, consultar_vendas_pdv_realtime
         from tabela_margens import encontrar_margem_esperada, e_item_sensivel
         from config import TOLERANCIA_MARGEM
 
@@ -69,35 +69,24 @@ def main():
         data_consulta = data_ontem
         caixa_nao_fechado = False
 
+        # Tentar dados do fechamento de caixa (mais preciso)
         produtos, totais = consultar_vendas_por_produto(data_consulta)
 
         if not produtos:
-            logger.warning(f"SEM VENDAS para {data_consulta.strftime('%d/%m/%Y')} — caixa nao fechado!")
+            # Caixa nao fechado — usar logestoque em tempo real
+            logger.warning(f"Caixa nao fechado {data_consulta.strftime('%d/%m/%Y')}. Usando Venda PDV (tempo real)...")
             caixa_nao_fechado = True
-            data_consulta = obter_data_mais_recente()
-            if data_consulta:
-                produtos, totais = consultar_vendas_por_produto(data_consulta)
-                logger.info(f"Usando ultimo dia disponivel: {data_consulta.strftime('%d/%m/%Y')}")
+            produtos, totais = consultar_vendas_pdv_realtime(data_consulta)
+            if produtos:
+                logger.info(f"Venda PDV (logestoque): {totais['total_produtos']} produtos")
 
         if not produtos:
             logger.error("Nenhum dado de venda encontrado!")
-            # Enviar alerta de caixa nao fechado mesmo sem dados
-            if ENVIAR_WHATSAPP:
-                try:
-                    from enviar_whatsapp import enviar_para_grupo
-                    msg = (f'*⚠️ CAIXA NAO FECHADO - {data_ontem.strftime("%d/%m/%Y")}*\n\n'
-                           f'O caixa do dia {data_ontem.strftime("%d/%m/%Y")} nao foi fechado.\n'
-                           f'Sem dados de venda para analise de margens.\n\n'
-                           f'*Fechar o caixa para gerar o relatorio.*\n\n'
-                           f'_Agente VR Master_')
-                    enviar_para_grupo(msg, GRUPO_WHATSAPP)
-                    logger.info("Alerta de caixa nao fechado enviado!")
-                except Exception as e:
-                    logger.error(f"ERRO ao enviar alerta: {e}", exc_info=True)
             return False
 
         logger.info(f"Dados: {totais['total_produtos']} produtos, "
-                     f"R$ {totais['total_venda_bruta']:,.2f} ({data_consulta.strftime('%d/%m/%Y')})")
+                     f"R$ {totais['total_venda_bruta']:,.2f} ({data_consulta.strftime('%d/%m/%Y')})"
+                     f"{' [via PDV real-time]' if caixa_nao_fechado else ''}")
 
     except Exception as e:
         logger.error(f"ERRO na consulta: {e}", exc_info=True)
@@ -164,8 +153,8 @@ def main():
         try:
             linhas = []
             if caixa_nao_fechado:
-                linhas += [f'*⚠️ CAIXA NAO FECHADO - {data_ontem.strftime("%d/%m/%Y")}*',
-                           f'Usando dados de {data_consulta.strftime("%d/%m/%Y")} (ultimo fechamento)', '']
+                linhas += [f'*CAIXA NAO FECHADO - {data_ontem.strftime("%d/%m/%Y")}*',
+                           f'_Dados via Venda PDV (preco de cadastro)_', '']
             linhas += [f'*MARGENS ABAIXO DA TABELA - {data_consulta.strftime("%d/%m/%Y")}*',
                       f'{len(itens_abaixo) + len(itens_sensiveis)} itens no total', '']
 
