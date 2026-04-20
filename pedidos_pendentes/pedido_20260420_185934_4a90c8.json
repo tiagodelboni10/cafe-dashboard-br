@@ -1,0 +1,47 @@
+{
+  "data_compra": "2026-04-20",
+  "id_loja": 1,
+  "id_comprador": 1,
+  "id_divisaofornecedor": 0,
+  "id_situacaopedido": 1,
+  "id_tipofretepedido": 0,
+  "id_tipoatendidopedido": 0,
+  "origem": "dashboard_estoque",
+  "pedidos": [
+    {
+      "id_fornecedor": 107,
+      "fornecedor_nome": "DISTRIMAX LTDA",
+      "itens": [
+        {
+          "id_produto": 11530,
+          "descricao": "LEITE DE AVEIA NUDE INTEGRAL 1LT",
+          "quantidade": 15
+        },
+        {
+          "id_produto": 11531,
+          "descricao": "LEITE DE AVEIA NUDE BARISTA 1LT",
+          "quantidade": 12
+        },
+        {
+          "id_produto": 11966,
+          "descricao": "WHEY NUTRATA PRO BAUNILHA 900GR",
+          "quantidade": 2
+        },
+        {
+          "id_produto": 76234,
+          "descricao": "PIPOCA MAIS PURA CARAMELO E FLOR DE SAL 100G",
+          "quantidade": 8
+        },
+        {
+          "id_produto": 82175,
+          "descricao": "PAO DE FORMA VITALIN GERGELIM E LINHACA 300G",
+          "quantidade": 1
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "recebido_em": "2026-04-20T18:59:34.384478-03:00",
+    "origem": "dashboard_estoque"
+  }
+}
