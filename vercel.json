@@ -4,12 +4,20 @@
     {
       "src": "api/chat.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "api/pedido-novo.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/api/chat",
       "dest": "/api/chat.py"
+    },
+    {
+      "src": "/api/pedido-novo",
+      "dest": "/api/pedido-novo.py"
     }
   ]
 }
