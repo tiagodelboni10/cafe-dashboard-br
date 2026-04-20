@@ -47,14 +47,18 @@ sys.path.insert(0, BASE_DIR)
 from enviar_pedido import conectar, inserir_pedido  # reusa a logica ja testada
 
 
+_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+
+
 def git(*args, check=True):
-    """Roda git no repo root. Retorna stdout."""
+    """Roda git no repo root. Retorna stdout. Sem janela de console no Windows."""
     r = subprocess.run(
         ["git"] + list(args),
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        creationflags=_NO_WINDOW,
     )
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} falhou: {r.stderr.strip()}")
