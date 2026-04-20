@@ -173,15 +173,17 @@ def esperar_whatsapp_carregar(driver, timeout=600):
 
 
 def abrir_grupo(driver, nome):
-    """Abre o chat do grupo pelo nome. JS-based — resistente a mudancas de HTML."""
+    """Abre o chat do grupo pelo nome usando clique nativo do Selenium."""
+    from selenium.webdriver.common.action_chains import ActionChains
     logger.info(f"Abrindo grupo '{nome}'...")
     time.sleep(2)
 
-    # Estrategia 1: buscar + clicar direto no span[title=nome] em qualquer lugar
-    script_click = """
+    # Marcar o elemento alvo via JS para depois localizar por id unico
+    script_marcar = """
         const target = arguments[0].toLowerCase().trim();
+        // limpar marcacao anterior
+        document.querySelectorAll('[data-listener-target]').forEach(e => e.removeAttribute('data-listener-target'));
         const spans = document.querySelectorAll('span[title]');
-        // priorizar match exato primeiro
         let match = null;
         for (const s of spans) {
             const t = (s.getAttribute('title') || '').toLowerCase().trim();
@@ -199,47 +201,65 @@ def abrir_grupo(driver, nome):
         for (let i = 0; i < 8 && el; i++) {
             const r = el.getAttribute && (el.getAttribute('role') || '');
             if (r === 'listitem' || r === 'row' || r === 'button') {
-                el.click();
+                el.setAttribute('data-listener-target', '1');
+                el.scrollIntoView({block: 'center'});
                 return {ok: true, title: match.getAttribute('title'), clicked: r};
             }
             el = el.parentElement;
         }
-        // fallback: clicar no proprio span
-        match.click();
+        match.setAttribute('data-listener-target', '1');
+        match.scrollIntoView({block: 'center'});
         return {ok: true, title: match.getAttribute('title'), clicked: 'span'};
     """
-    resultado = driver.execute_script(script_click, nome)
-    if resultado and resultado.get("ok"):
-        time.sleep(1.5)
-        logger.info(f"Grupo aberto: '{resultado.get('title')}' (via {resultado.get('clicked')})")
-        return True
+    resultado = driver.execute_script(script_marcar, nome)
+    if not (resultado and resultado.get("ok")):
+        titulos_visiveis = resultado.get("titles", []) if isinstance(resultado, dict) else []
+        logger.warning(f"Grupo nao visivel na sidebar. Titulos: {titulos_visiveis[:15]}")
+        # Tentar via atalho Ctrl+Alt+/
+        try:
+            ActionChains(driver).key_down(Keys.CONTROL).key_down(Keys.ALT).send_keys("/").key_up(Keys.ALT).key_up(Keys.CONTROL).perform()
+            time.sleep(1)
+            active = driver.switch_to.active_element
+            if active and active.get_attribute("contenteditable") == "true":
+                active.send_keys(nome)
+                time.sleep(2)
+                resultado = driver.execute_script(script_marcar, nome)
+        except Exception as e:
+            logger.warning(f"Atalho Ctrl+Alt+/ falhou: {e}")
 
-    titulos_visiveis = resultado.get("titles", []) if isinstance(resultado, dict) else []
-    logger.warning(f"Grupo nao visivel na sidebar. Titulos: {titulos_visiveis[:15]}")
+    if not (resultado and resultado.get("ok")):
+        raise NoSuchElementException(
+            f"Grupo '{nome}' nao encontrado. Confira o nome exato."
+        )
 
-    # Estrategia 2: usar atalho de teclado pra focar busca e procurar
+    # Clique NATIVO Selenium (dispara handlers React corretamente)
     try:
-        from selenium.webdriver.common.action_chains import ActionChains
-        body = driver.find_element(By.TAG_NAME, "body")
-        # Ctrl+Alt+/ foca a busca no WhatsApp Web
-        ActionChains(driver).key_down(Keys.CONTROL).key_down(Keys.ALT).send_keys("/").key_up(Keys.ALT).key_up(Keys.CONTROL).perform()
-        time.sleep(1)
-        active = driver.switch_to.active_element
-        if active and active.get_attribute("contenteditable") == "true":
-            active.send_keys(nome)
-            time.sleep(2)
-            # re-tentar clicar
-            resultado = driver.execute_script(script_click, nome)
-            if resultado and resultado.get("ok"):
-                time.sleep(1)
-                logger.info(f"Grupo aberto via busca: '{resultado.get('title')}'")
-                return True
-    except Exception as e:
-        logger.warning(f"Atalho Ctrl+Alt+/ falhou: {e}")
+        alvo = driver.find_element(By.CSS_SELECTOR, "[data-listener-target]")
+        try:
+            alvo.click()
+        except Exception:
+            # fallback ActionChains
+            ActionChains(driver).move_to_element(alvo).click().perform()
+    except NoSuchElementException:
+        # fallback: click via JS
+        driver.execute_script("document.querySelector('[data-listener-target]')?.click();")
 
-    raise NoSuchElementException(
-        f"Grupo '{nome}' nao encontrado. Confira o nome exato e se ele esta na sua lista de conversas."
-    )
+    # aguardar chat abrir (ver se aparece algum sinal)
+    deadline = time.time() + 6
+    while time.time() < deadline:
+        sinal = driver.execute_script("""
+            return !!(
+                document.querySelector('#main header') ||
+                document.querySelector('[data-pre-plain-text]') ||
+                document.querySelector('header [role="button"]')
+            );
+        """)
+        if sinal:
+            break
+        time.sleep(0.5)
+
+    logger.info(f"Grupo aberto: '{resultado.get('title')}' (via {resultado.get('clicked')})")
+    return True
 
 
 _JS_LER_MSGS = r"""
@@ -304,7 +324,31 @@ def ler_mensagens_recentes(driver, limite=40):
         return []
 
 
-def ciclo_leitura(driver, processed):
+def grupo_esta_aberto(driver):
+    """Retorna True se #main tem um chat aberto (tem header com conversa)."""
+    try:
+        return bool(driver.execute_script("""
+            const m = document.querySelector('#main');
+            if (!m) return false;
+            // Se tem header com titulo e tem mensagens ou placeholder de conversa, esta aberto
+            const header = m.querySelector('header');
+            const hasMsgs = m.querySelectorAll('[data-pre-plain-text], div[data-id]').length > 0;
+            return !!header || hasMsgs;
+        """))
+    except Exception:
+        return False
+
+
+def ciclo_leitura(driver, processed, nome_grupo):
+    # Re-garantir que o grupo esta aberto (WhatsApp as vezes perde o foco)
+    if not grupo_esta_aberto(driver):
+        logger.info("Chat fechado — reabrindo grupo.")
+        try:
+            abrir_grupo(driver, nome_grupo)
+        except Exception as e:
+            logger.warning(f"Falha ao reabrir grupo: {e}")
+            return 0
+
     msgs = ler_mensagens_recentes(driver)
     novos = 0
     for m in msgs:
@@ -371,7 +415,7 @@ def main():
             logger.info(f"Listener ativo. Polling a cada {POLL_SECONDS}s.")
             while not _parar:
                 try:
-                    n = ciclo_leitura(driver, processed)
+                    n = ciclo_leitura(driver, processed, GRUPO_NOME)
                     if n > 0:
                         logger.info(f"{n} mensagem(ns) enfileirada(s).")
                 except Exception as e:
