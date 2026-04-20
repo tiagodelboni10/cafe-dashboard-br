@@ -242,10 +242,21 @@ def abrir_grupo(driver, nome):
     )
 
 
-_JS_LER_MSGS = """
+_JS_LER_MSGS = r"""
     const limite = arguments[0] || 40;
-    const containers = document.querySelectorAll('[data-pre-plain-text]');
-    const result = [];
+    const diag = { pre: 0, copyable: 0, span_sel: 0, msg_in: 0, data_id: 0, main: false };
+    const main = document.querySelector('#main');
+    diag.main = !!main;
+    const root = main || document;
+    diag.pre = root.querySelectorAll('[data-pre-plain-text]').length;
+    diag.copyable = root.querySelectorAll('div.copyable-text, [data-copyable-text]').length;
+    diag.span_sel = root.querySelectorAll('span.selectable-text, span[class*="selectable-text"]').length;
+    diag.msg_in = root.querySelectorAll('div.message-in, div.message-out, div[class*="message-in"], div[class*="message-out"]').length;
+    diag.data_id = root.querySelectorAll('div[data-id]').length;
+
+    // Estrategia 1: containers com data-pre-plain-text
+    let result = [];
+    const containers = root.querySelectorAll('[data-pre-plain-text]');
     for (const c of containers) {
         const meta = c.getAttribute('data-pre-plain-text') || '';
         let text = '';
@@ -257,15 +268,37 @@ _JS_LER_MSGS = """
         }
         if (text) result.push({meta: meta.trim(), text: text});
     }
-    return result.slice(-limite);
+
+    // Estrategia 2: se nada achou, varrer spans selectable-text dentro de bubbles
+    if (result.length === 0 && main) {
+        const bubbles = main.querySelectorAll('div[data-id], div[class*="message-in"], div[class*="message-out"]');
+        for (const b of bubbles) {
+            const spans = b.querySelectorAll('span.selectable-text, span[class*="selectable-text"]');
+            if (spans.length === 0) continue;
+            const text = Array.from(spans).map(s => s.innerText || s.textContent || '').join(' ').trim();
+            if (!text) continue;
+            const did = b.getAttribute('data-id') || '';
+            result.push({meta: did, text: text});
+        }
+    }
+
+    return {diag: diag, msgs: result.slice(-limite)};
 """
 
 
 def ler_mensagens_recentes(driver, limite=40):
     """Retorna lista das ultimas mensagens do chat atualmente aberto (via JS)."""
     try:
-        msgs = driver.execute_script(_JS_LER_MSGS, limite)
-        return msgs or []
+        out = driver.execute_script(_JS_LER_MSGS, limite)
+        diag = (out or {}).get("diag", {})
+        msgs = (out or {}).get("msgs", []) or []
+        # log diagnostico uma vez por ciclo
+        logger.info(
+            f"DOM: main={diag.get('main')} pre={diag.get('pre')} copyable={diag.get('copyable')}"
+            f" spanSel={diag.get('span_sel')} msgIO={diag.get('msg_in')} dataId={diag.get('data_id')}"
+            f" -> msgs={len(msgs)}"
+        )
+        return msgs
     except Exception as e:
         logger.warning(f"Erro ao ler mensagens via JS: {e}")
         return []
