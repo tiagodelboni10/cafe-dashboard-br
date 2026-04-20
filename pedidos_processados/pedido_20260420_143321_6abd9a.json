@@ -37,6 +37,8 @@
   ],
   "_meta": {
     "recebido_em": "2026-04-20T14:33:21.243945-03:00",
-    "origem": "dashboard_estoque"
+    "origem": "dashboard_estoque",
+    "processado_em": "2026-04-20T14:34:04",
+    "pedidos_criados": "#1753 ELSONS PRODUTOS ALIMENTICIOS LTDA (4 itens R$504.95)"
   }
 }
