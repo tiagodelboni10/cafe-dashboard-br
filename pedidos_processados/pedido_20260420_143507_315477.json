@@ -32,6 +32,8 @@
   ],
   "_meta": {
     "recebido_em": "2026-04-20T14:35:07.143180-03:00",
-    "origem": "dashboard_estoque"
+    "origem": "dashboard_estoque",
+    "processado_em": "2026-04-20T14:36:04",
+    "pedidos_criados": "#1754 DISTRIMAX LTDA (3 itens R$185.41)"
   }
 }
