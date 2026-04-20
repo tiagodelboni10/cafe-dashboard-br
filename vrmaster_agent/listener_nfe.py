@@ -173,67 +173,72 @@ def esperar_whatsapp_carregar(driver, timeout=600):
 
 
 def abrir_grupo(driver, nome):
-    """Abre o chat do grupo pelo nome. Tenta varias estrategias."""
+    """Abre o chat do grupo pelo nome. JS-based — resistente a mudancas de HTML."""
     logger.info(f"Abrindo grupo '{nome}'...")
-    # esperar carregar a sidebar
     time.sleep(2)
 
-    # estrategias pra achar o campo de busca
-    search = None
-    selectors = [
-        "div[role='textbox'][contenteditable='true'][data-tab='3']",
-        "div[role='textbox'][contenteditable='true']",
-        "div[contenteditable='true'][data-tab='3']",
-        "div[aria-label*='Pesquisa'][contenteditable='true']",
-        "div[aria-label*='Search'][contenteditable='true']",
-    ]
-    for sel in selectors:
-        try:
-            els = driver.find_elements(By.CSS_SELECTOR, sel)
-            for e in els:
-                if e.is_displayed():
-                    search = e
-                    break
-            if search:
-                break
-        except Exception:
-            continue
-
-    if not search:
-        raise NoSuchElementException("Campo de busca do WhatsApp nao encontrado")
-
-    search.click()
-    time.sleep(0.5)
-    try:
-        search.send_keys(Keys.CONTROL, "a")
-    except Exception:
-        pass
-    search.send_keys(nome)
-    time.sleep(2)
-
-    # tentar abrir por span[title exato]
-    try:
-        el = driver.find_element(By.XPATH, f"//span[@title={json.dumps(nome)}]")
-        el.click()
-        time.sleep(1)
-        logger.info(f"Grupo aberto (title exato): {nome}")
-        return True
-    except NoSuchElementException:
-        pass
-
-    # fallback: qualquer span[title] com nome parcial (case insensitive)
-    spans = driver.find_elements(By.XPATH, "//span[@title]")
-    candidatos = [(s, s.get_attribute("title") or "") for s in spans]
-    encontrados = [s for s, t in candidatos if nome.lower() in t.lower() and t.strip()]
-    if encontrados:
-        encontrados[0].click()
-        time.sleep(1)
-        logger.info(f"Grupo aberto (match parcial): {encontrados[0].get_attribute('title')}")
+    # Estrategia 1: buscar + clicar direto no span[title=nome] em qualquer lugar
+    script_click = """
+        const target = arguments[0].toLowerCase().trim();
+        const spans = document.querySelectorAll('span[title]');
+        // priorizar match exato primeiro
+        let match = null;
+        for (const s of spans) {
+            const t = (s.getAttribute('title') || '').toLowerCase().trim();
+            if (t === target) { match = s; break; }
+        }
+        if (!match) {
+            for (const s of spans) {
+                const t = (s.getAttribute('title') || '').toLowerCase().trim();
+                if (t && t.includes(target)) { match = s; break; }
+            }
+        }
+        if (!match) return {ok: false, titles: Array.from(spans).slice(0, 30).map(s => s.getAttribute('title')).filter(x => x)};
+        // subir ate achar um ancestral clicavel (listitem ou role=row)
+        let el = match;
+        for (let i = 0; i < 8 && el; i++) {
+            const r = el.getAttribute && (el.getAttribute('role') || '');
+            if (r === 'listitem' || r === 'row' || r === 'button') {
+                el.click();
+                return {ok: true, title: match.getAttribute('title'), clicked: r};
+            }
+            el = el.parentElement;
+        }
+        // fallback: clicar no proprio span
+        match.click();
+        return {ok: true, title: match.getAttribute('title'), clicked: 'span'};
+    """
+    resultado = driver.execute_script(script_click, nome)
+    if resultado and resultado.get("ok"):
+        time.sleep(1.5)
+        logger.info(f"Grupo aberto: '{resultado.get('title')}' (via {resultado.get('clicked')})")
         return True
 
-    titulos = [t for _, t in candidatos if t][:20]
+    titulos_visiveis = resultado.get("titles", []) if isinstance(resultado, dict) else []
+    logger.warning(f"Grupo nao visivel na sidebar. Titulos: {titulos_visiveis[:15]}")
+
+    # Estrategia 2: usar atalho de teclado pra focar busca e procurar
+    try:
+        from selenium.webdriver.common.action_chains import ActionChains
+        body = driver.find_element(By.TAG_NAME, "body")
+        # Ctrl+Alt+/ foca a busca no WhatsApp Web
+        ActionChains(driver).key_down(Keys.CONTROL).key_down(Keys.ALT).send_keys("/").key_up(Keys.ALT).key_up(Keys.CONTROL).perform()
+        time.sleep(1)
+        active = driver.switch_to.active_element
+        if active and active.get_attribute("contenteditable") == "true":
+            active.send_keys(nome)
+            time.sleep(2)
+            # re-tentar clicar
+            resultado = driver.execute_script(script_click, nome)
+            if resultado and resultado.get("ok"):
+                time.sleep(1)
+                logger.info(f"Grupo aberto via busca: '{resultado.get('title')}'")
+                return True
+    except Exception as e:
+        logger.warning(f"Atalho Ctrl+Alt+/ falhou: {e}")
+
     raise NoSuchElementException(
-        f"Grupo '{nome}' nao encontrado. Titulos visiveis: {titulos}"
+        f"Grupo '{nome}' nao encontrado. Confira o nome exato e se ele esta na sua lista de conversas."
     )
 
 
