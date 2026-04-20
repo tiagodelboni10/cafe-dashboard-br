@@ -44,7 +44,7 @@ LOGS_DIR = BASE_DIR / "logs"
 FILA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
-PADRAO_OK = re.compile(r"^\s*ok\s+(\d{3,})\s*$", re.IGNORECASE)
+PADRAO_OK = re.compile(r"^\s*ok\s+(\d{3,})\b", re.IGNORECASE)
 POLL_SECONDS = 20
 
 log_file = LOGS_DIR / f"listener_nfe_{datetime.now().strftime('%Y%m%d')}.log"
@@ -242,28 +242,33 @@ def abrir_grupo(driver, nome):
     )
 
 
+_JS_LER_MSGS = """
+    const limite = arguments[0] || 40;
+    const containers = document.querySelectorAll('[data-pre-plain-text]');
+    const result = [];
+    for (const c of containers) {
+        const meta = c.getAttribute('data-pre-plain-text') || '';
+        let text = '';
+        const spans = c.querySelectorAll('span.selectable-text, span[class*="selectable-text"]');
+        if (spans.length > 0) {
+            text = Array.from(spans).map(s => s.innerText || s.textContent || '').join(' ').trim();
+        } else {
+            text = (c.innerText || c.textContent || '').trim();
+        }
+        if (text) result.push({meta: meta.trim(), text: text});
+    }
+    return result.slice(-limite);
+"""
+
+
 def ler_mensagens_recentes(driver, limite=40):
-    """Retorna lista das ultimas mensagens do chat atualmente aberto."""
-    msgs = []
-    # os contaneires de mensagens tem role='row'. Cada msg tem copyable-text
-    rows = driver.find_elements(By.XPATH, "//div[@role='row']")
-    for row in rows[-limite:]:
-        try:
-            copy_el = row.find_element(By.XPATH, ".//div[contains(@class,'copyable-text')]")
-            meta = copy_el.get_attribute("data-pre-plain-text") or ""
-            # texto da msg (span selectable-text)
-            text = ""
-            try:
-                spans = copy_el.find_elements(By.XPATH, ".//span[contains(@class,'selectable-text')]")
-                text = " ".join(s.text for s in spans if s.text).strip()
-            except NoSuchElementException:
-                pass
-            if not text:
-                continue
-            msgs.append({"meta": meta.strip(), "text": text})
-        except (NoSuchElementException, StaleElementReferenceException):
-            continue
-    return msgs
+    """Retorna lista das ultimas mensagens do chat atualmente aberto (via JS)."""
+    try:
+        msgs = driver.execute_script(_JS_LER_MSGS, limite)
+        return msgs or []
+    except Exception as e:
+        logger.warning(f"Erro ao ler mensagens via JS: {e}")
+        return []
 
 
 def ciclo_leitura(driver, processed):
