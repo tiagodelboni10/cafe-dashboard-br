@@ -110,59 +110,126 @@ def criar_driver():
     return driver
 
 
-def esperar_whatsapp_carregar(driver, timeout=120):
-    """Espera ate o WhatsApp Web carregar a lista de chats (ou QR code)."""
+def esperar_whatsapp_carregar(driver, timeout=600):
+    """Espera ate o WhatsApp Web carregar (logado). Se tiver QR, avisa e espera scan."""
     logger.info("Abrindo web.whatsapp.com...")
     driver.get("https://web.whatsapp.com")
+
     deadline = time.time() + timeout
+    qr_avisado = False
     while time.time() < deadline:
-        # Se tiver QR code, aviso ao usuario
-        try:
-            driver.find_element(By.XPATH, "//canvas[@aria-label='Scan me!' or contains(@aria-label,'escan')]")
-            logger.warning("QR code exibido — escaneie no celular (WhatsApp > Dispositivos conectados)")
-            time.sleep(5)
-            continue
-        except NoSuchElementException:
-            pass
-        # UI principal carregada?
-        try:
-            driver.find_element(By.XPATH, "//div[@role='textbox' and contains(@aria-label,'esquisa')] | //div[contains(@aria-label,'Search input textbox')]")
-            logger.info("WhatsApp Web carregado.")
-            return True
-        except NoSuchElementException:
-            time.sleep(2)
-    raise TimeoutException("WhatsApp Web nao carregou")
+        # LOGADO: sidebar do chat sempre existe
+        for sel in ("div#pane-side", "div#side", "div[aria-label='Lista de conversas']",
+                    "div[aria-label='Chat list']"):
+            try:
+                el = driver.find_element(By.CSS_SELECTOR, sel)
+                if el.is_displayed():
+                    logger.info(f"WhatsApp Web carregado (seletor: {sel}).")
+                    return True
+            except NoSuchElementException:
+                continue
+            except Exception:
+                continue
+
+        # QR visivel?
+        qr_visivel = False
+        for sel in ("canvas[aria-label]", "div[data-ref]", "div._akau canvas",
+                    "div[data-testid='qrcode']"):
+            try:
+                el = driver.find_element(By.CSS_SELECTOR, sel)
+                if el.is_displayed():
+                    qr_visivel = True
+                    break
+            except NoSuchElementException:
+                continue
+            except Exception:
+                continue
+
+        if qr_visivel and not qr_avisado:
+            logger.warning("=" * 60)
+            logger.warning("QR CODE visivel no Chrome.")
+            logger.warning("WhatsApp no celular > Menu > Dispositivos conectados >")
+            logger.warning("Conectar dispositivo > Escaneie o QR da janela do Chrome.")
+            logger.warning("=" * 60)
+            qr_avisado = True
+
+        time.sleep(3)
+
+    # timeout — tentar dump do estado atual para debug
+    try:
+        title = driver.title
+        url = driver.current_url
+        body_snip = (driver.find_element(By.TAG_NAME, "body").text or "")[:200]
+        logger.error(f"Timeout. Title='{title}' URL='{url}'")
+        logger.error(f"Body snippet: {body_snip!r}")
+    except Exception:
+        pass
+    raise TimeoutException(f"WhatsApp Web nao carregou em {timeout}s")
 
 
 def abrir_grupo(driver, nome):
-    """Abre o chat do grupo pelo nome."""
+    """Abre o chat do grupo pelo nome. Tenta varias estrategias."""
     logger.info(f"Abrindo grupo '{nome}'...")
-    # clicar na busca
-    try:
-        search = driver.find_element(By.XPATH, "//div[@role='textbox' and (contains(@aria-label,'esquisa') or contains(@aria-label,'Search'))]")
-    except NoSuchElementException:
-        # as vezes precisa clicar num botao de busca primeiro
-        driver.find_elements(By.XPATH, "//button[@aria-label='Nova conversa' or @aria-label='Pesquisar']")
-        search = driver.find_element(By.XPATH, "//div[@role='textbox' and (contains(@aria-label,'esquisa') or contains(@aria-label,'Search'))]")
+    # esperar carregar a sidebar
+    time.sleep(2)
+
+    # estrategias pra achar o campo de busca
+    search = None
+    selectors = [
+        "div[role='textbox'][contenteditable='true'][data-tab='3']",
+        "div[role='textbox'][contenteditable='true']",
+        "div[contenteditable='true'][data-tab='3']",
+        "div[aria-label*='Pesquisa'][contenteditable='true']",
+        "div[aria-label*='Search'][contenteditable='true']",
+    ]
+    for sel in selectors:
+        try:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for e in els:
+                if e.is_displayed():
+                    search = e
+                    break
+            if search:
+                break
+        except Exception:
+            continue
+
+    if not search:
+        raise NoSuchElementException("Campo de busca do WhatsApp nao encontrado")
+
     search.click()
     time.sleep(0.5)
-    search.send_keys(Keys.CONTROL, "a")
+    try:
+        search.send_keys(Keys.CONTROL, "a")
+    except Exception:
+        pass
     search.send_keys(nome)
     time.sleep(2)
-    # clicar no primeiro resultado que tem span title=nome
+
+    # tentar abrir por span[title exato]
     try:
-        el = driver.find_element(By.XPATH, f"//span[@title='{nome}']")
+        el = driver.find_element(By.XPATH, f"//span[@title={json.dumps(nome)}]")
         el.click()
+        time.sleep(1)
+        logger.info(f"Grupo aberto (title exato): {nome}")
+        return True
     except NoSuchElementException:
-        # tentar case-insensitive / parcial
-        resultados = driver.find_elements(By.XPATH, "//span[@title]")
-        for r in resultados:
-            if nome.lower() in (r.get_attribute("title") or "").lower():
-                r.click()
-                return True
-        raise NoSuchElementException(f"Grupo '{nome}' nao encontrado")
-    time.sleep(1)
-    return True
+        pass
+
+    # fallback: qualquer span[title] com nome parcial (case insensitive)
+    spans = driver.find_elements(By.XPATH, "//span[@title]")
+    candidatos = [(s, s.get_attribute("title") or "") for s in spans]
+    encontrados = [s for s, t in candidatos if nome.lower() in t.lower() and t.strip()]
+    if encontrados:
+        encontrados[0].click()
+        time.sleep(1)
+        logger.info(f"Grupo aberto (match parcial): {encontrados[0].get_attribute('title')}")
+        return True
+
+    titulos = [t for _, t in candidatos if t][:20]
+    raise NoSuchElementException(
+        f"Grupo '{nome}' nao encontrado. Titulos visiveis: {titulos}"
+    )
 
 
 def ler_mensagens_recentes(driver, limite=40):
