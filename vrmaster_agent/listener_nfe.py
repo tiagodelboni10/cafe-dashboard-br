@@ -101,7 +101,12 @@ def criar_driver():
     opts.add_argument("--profile-directory=Default")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--disable-extensions")
+    opts.add_argument("--no-first-run")
+    opts.add_argument("--no-default-browser-check")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--disable-features=VizDisplayCompositor")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
     # Nao usar headless — WhatsApp Web detecta
@@ -286,7 +291,29 @@ def handler_sinal(signum, frame):
     logger.info(f"Sinal {signum} recebido, encerrando...")
 
 
+def _verificar_instancia_unica():
+    """Evita 2 listeners rodando ao mesmo tempo (trava o profile)."""
+    lock = BASE_DIR / "listener_nfe.lock"
+    if lock.exists():
+        try:
+            pid = int(lock.read_text().strip())
+            # checar se processo existe
+            import psutil  # type: ignore
+            if psutil.pid_exists(pid):
+                logger.error(f"Listener ja esta rodando (PID {pid}). Abortando.")
+                sys.exit(0)
+        except Exception:
+            pass  # se psutil nao tiver, segue em frente
+    try:
+        lock.write_text(str(os.getpid()))
+    except Exception:
+        pass
+    import atexit
+    atexit.register(lambda: lock.unlink(missing_ok=True) if lock.exists() else None)
+
+
 def main():
+    _verificar_instancia_unica()
     signal.signal(signal.SIGINT, handler_sinal)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, handler_sinal)
