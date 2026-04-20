@@ -1,0 +1,37 @@
+{
+  "data_compra": "2026-04-20",
+  "id_loja": 1,
+  "id_comprador": 1,
+  "id_divisaofornecedor": 0,
+  "id_situacaopedido": 1,
+  "id_tipofretepedido": 0,
+  "id_tipoatendidopedido": 0,
+  "origem": "dashboard_estoque",
+  "pedidos": [
+    {
+      "id_fornecedor": 107,
+      "fornecedor_nome": "DISTRIMAX LTDA",
+      "itens": [
+        {
+          "id_produto": 10168,
+          "descricao": "BISCOITO VITALIN CASEIRINHO SEQUILHOS SB MARACUJA 100G",
+          "quantidade": 17
+        },
+        {
+          "id_produto": 12813,
+          "descricao": "VINAGRE PURO POMAR MACA 4,2% 400ML",
+          "quantidade": 3
+        },
+        {
+          "id_produto": 12932,
+          "descricao": "SNACK GOOD SOY QUEIJO 25G",
+          "quantidade": 20
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "recebido_em": "2026-04-20T14:35:07.143180-03:00",
+    "origem": "dashboard_estoque"
+  }
+}
