@@ -2,3 +2,11 @@
 __pycache__/
 *.pyc
 .env
+# Perfil do Chrome do listener WhatsApp (contem sessao - nao commitar)
+vrmaster_agent/chrome_profile_whatsapp/
+# Filas locais e logs
+vrmaster_agent/nfe_fila/
+vrmaster_agent/nfe_processadas/
+vrmaster_agent/nfe_erros/
+vrmaster_agent/listener_nfe_state.json
+vrmaster_agent/logs/
