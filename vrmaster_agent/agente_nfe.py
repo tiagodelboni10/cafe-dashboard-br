@@ -31,7 +31,9 @@ from datetime import datetime
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, ID_LOJA, GRUPO_WHATSAPP
+from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, ID_LOJA
+
+GRUPO_RESPOSTA = os.environ.get("MERKAL_NOTAS_GRUPO", "MERKAL NOTAS")
 
 FILA_DIR = BASE_DIR / "nfe_fila"
 PROCESSADAS_DIR = BASE_DIR / "nfe_processadas"
@@ -108,11 +110,11 @@ def buscar_dados_nota(numero_nota, id_loja=ID_LOJA):
 
 
 def responder_whatsapp(msg):
-    """Envia resposta no grupo (best effort — nao bloqueia se falhar)."""
+    """Envia resposta no grupo Merkal NOTAS (best effort — nao bloqueia se falhar)."""
     try:
         from enviar_whatsapp import enviar_para_grupo
-        enviar_para_grupo(msg, GRUPO_WHATSAPP)
-        logger.info(f"WhatsApp enviado: {msg[:80]}")
+        enviar_para_grupo(msg, GRUPO_RESPOSTA)
+        logger.info(f"WhatsApp enviado ({GRUPO_RESPOSTA}): {msg[:80]}")
     except Exception as e:
         logger.warning(f"Falha WhatsApp (segue): {e}")
 
@@ -147,30 +149,84 @@ def focar_vr_master():
 
 def abrir_repositorio_nfe(app, main_win):
     """
-    Abre Nota Fiscal > Repositorio de NF-e Entrada.
-    Usa o menu — mais confiavel que atalho.
+    Caminho no VR:
+      Nota Fiscal > Repositorio > NF-e > Entrada
+    Navega via teclado (pyautogui) porque Delphi nao expoe menu nativo
+    confiavelmente via pywinauto.
+
+    Sequencia:
+      Alt+N          -> abre menu Nota Fiscal
+      R, R           -> cicla entre 'Recebimento' e 'Repositorio'
+      Right          -> abre submenu Repositorio
+      N, N           -> cicla entre 'NFC-e' e 'NF-e'
+      Right          -> abre submenu NF-e
+      Enter          -> ativa 'Entrada' (primeiro item)
     """
-    logger.info("Abrindo Repositorio de NF-e Entrada...")
-    # Ja tem janela do repositorio aberta?
+    import pyautogui
+    logger.info("Abrindo Repositorio de NF-e Entrada (menu 4 niveis)...")
+
     existentes = app.windows(title_re="Repositorio de NF-?e Entrada.*")
     if existentes:
         w = existentes[0]
-        w.set_focus()
+        try:
+            w.set_focus()
+        except Exception:
+            pass
         logger.info("Repositorio ja estava aberto.")
         return w
 
-    # usar menu
     try:
-        main_win.menu_select("Nota Fiscal -> Repositorio de NF-e Entrada")
-    except Exception:
-        # fallback: tentar atalho
-        main_win.type_keys("%{F}")  # exemplo generico
-        raise RuntimeError("Nao consegui abrir o Repositorio de NF-e via menu.")
+        main_win.set_focus()
+    except Exception as e:
+        logger.warning(f"Falha set_focus main: {e}")
+    time.sleep(0.8)
 
+    # Alt+N -> Nota Fiscal
+    pyautogui.keyDown("alt")
+    pyautogui.press("n")
+    pyautogui.keyUp("alt")
+    time.sleep(0.5)
+    # R, R -> Repositorio (pula Recebimento)
+    pyautogui.press("r")
+    time.sleep(0.15)
+    pyautogui.press("r")
+    time.sleep(0.3)
+    # abrir submenu Repositorio
+    pyautogui.press("right")
+    time.sleep(0.3)
+    # N, N -> NF-e (pula NFC-e)
+    pyautogui.press("n")
+    time.sleep(0.15)
+    pyautogui.press("n")
+    time.sleep(0.3)
+    # abrir submenu NF-e
+    pyautogui.press("right")
+    time.sleep(0.3)
+    # Enter -> Entrada (primeiro item)
+    pyautogui.press("enter")
     time.sleep(1.5)
-    win = app.window(title_re="Repositorio de NF-?e Entrada.*")
-    win.wait("exists visible ready", timeout=15)
-    return win
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            win = app.window(title_re="Repositorio de NF-?e Entrada.*")
+            win.wait("exists visible ready", timeout=1)
+            return win
+        except Exception:
+            time.sleep(0.5)
+
+    # Fechar qualquer menu aberto antes de retornar erro
+    try:
+        pyautogui.press("escape")
+        pyautogui.press("escape")
+        pyautogui.press("escape")
+    except Exception:
+        pass
+    raise RuntimeError(
+        "Nao consegui abrir Repositorio de NF-e. "
+        "Caminho testado: Nota Fiscal > Repositorio > NF-e > Entrada. "
+        "Verifique se o VR Master esta em primeiro plano."
+    )
 
 
 def buscar_nota(repo_win, numero_nota):
