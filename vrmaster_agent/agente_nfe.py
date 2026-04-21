@@ -123,27 +123,64 @@ def responder_whatsapp(msg):
 # AUTOMACAO VR MASTER via pywinauto
 # =========================================================
 
-def _pywinauto_app():
+def _conectar_app():
+    """Conecta no VR Master. Tenta UIA (melhor para Java Swing) e fallback win32."""
     from pywinauto import Application
-    return Application(backend="win32").connect(title_re="VR Master.*", timeout=10)
+    from pywinauto.findwindows import ElementNotFoundError
+    ultimo_erro = None
+    for backend in ("uia", "win32"):
+        try:
+            app = Application(backend=backend).connect(title_re="VR Master.*", timeout=5)
+            return app, backend
+        except ElementNotFoundError as e:
+            ultimo_erro = e
+    raise RuntimeError(
+        f"VR Master nao esta aberto (verificado UIA+win32). Ultimo erro: {ultimo_erro}"
+    )
 
 
-def _main_window(app):
-    # janela principal
-    return app.window(title_re="VR Master.*")
+def _forcar_foreground(hwnd):
+    """Traz janela para frente bypassando focus-lock do Windows."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    SW_RESTORE = 9
+    user32.ShowWindow(hwnd, SW_RESTORE)
+    fg = user32.GetForegroundWindow()
+    if fg == hwnd:
+        return
+    cur_thread = kernel32.GetCurrentThreadId()
+    fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    try:
+        if fg_thread and fg_thread != cur_thread:
+            user32.AttachThreadInput(cur_thread, fg_thread, True)
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+    finally:
+        if fg_thread and fg_thread != cur_thread:
+            user32.AttachThreadInput(cur_thread, fg_thread, False)
 
 
 def focar_vr_master():
-    """Traz a janela do VR Master para frente. Falha se VR nao estiver aberto."""
-    from pywinauto.findwindows import ElementNotFoundError
+    """Conecta + traz VR Master para o frente agressivamente."""
+    app, backend = _conectar_app()
+    logger.info(f"VR Master conectado (backend {backend}).")
+    w = app.window(title_re="VR Master.*")
     try:
-        app = _pywinauto_app()
-    except ElementNotFoundError:
-        raise RuntimeError("VR Master nao esta aberto. Abra o VR Master e mantenha logado.")
-    w = _main_window(app)
-    w.restore()
-    w.set_focus()
-    time.sleep(0.5)
+        w.restore()
+    except Exception:
+        pass
+    # foco agressivo via Win32
+    try:
+        hwnd = w.handle if hasattr(w, "handle") else w.wrapper_object().handle
+        _forcar_foreground(hwnd)
+    except Exception as e:
+        logger.warning(f"Forcar foreground falhou: {e}. Tentando set_focus().")
+        try:
+            w.set_focus()
+        except Exception as e2:
+            logger.warning(f"set_focus tambem falhou: {e2}")
+    time.sleep(0.6)
     return app, w
 
 
@@ -175,36 +212,42 @@ def abrir_repositorio_nfe(app, main_win):
         logger.info("Repositorio ja estava aberto.")
         return w
 
+    # Re-focar (caso o foco tenha perdido desde focar_vr_master)
     try:
-        main_win.set_focus()
+        hwnd = main_win.handle if hasattr(main_win, "handle") else main_win.wrapper_object().handle
+        _forcar_foreground(hwnd)
     except Exception as e:
-        logger.warning(f"Falha set_focus main: {e}")
-    time.sleep(0.8)
+        logger.warning(f"Falha re-focar VR: {e}")
+    time.sleep(0.6)
 
+    # Usar pyautogui com delays maiores pra Java Swing
+    pyautogui.PAUSE = 0.2
     # Alt+N -> Nota Fiscal
     pyautogui.keyDown("alt")
+    time.sleep(0.1)
     pyautogui.press("n")
+    time.sleep(0.05)
     pyautogui.keyUp("alt")
-    time.sleep(0.5)
+    time.sleep(0.6)
     # R, R -> Repositorio (pula Recebimento)
     pyautogui.press("r")
-    time.sleep(0.15)
+    time.sleep(0.25)
     pyautogui.press("r")
-    time.sleep(0.3)
+    time.sleep(0.4)
     # abrir submenu Repositorio
     pyautogui.press("right")
-    time.sleep(0.3)
+    time.sleep(0.5)
     # N, N -> NF-e (pula NFC-e)
     pyautogui.press("n")
-    time.sleep(0.15)
+    time.sleep(0.25)
     pyautogui.press("n")
-    time.sleep(0.3)
+    time.sleep(0.4)
     # abrir submenu NF-e
     pyautogui.press("right")
-    time.sleep(0.3)
+    time.sleep(0.5)
     # Enter -> Entrada (primeiro item)
     pyautogui.press("enter")
-    time.sleep(1.5)
+    time.sleep(2.0)
 
     deadline = time.time() + 15
     while time.time() < deadline:
