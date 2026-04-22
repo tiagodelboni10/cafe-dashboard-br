@@ -100,17 +100,10 @@ def enqueue(numero, meta, text):
 def criar_driver():
     opts = Options()
     opts.add_argument(f"--user-data-dir={PROFILE_DIR}")
-    opts.add_argument("--profile-directory=Default")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--disable-extensions")
     opts.add_argument("--no-first-run")
     opts.add_argument("--no-default-browser-check")
     opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_argument("--disable-features=VizDisplayCompositor")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
     # Nao usar headless — WhatsApp Web detecta
     driver = webdriver.Chrome(options=opts)
     driver.set_window_size(1100, 800)
