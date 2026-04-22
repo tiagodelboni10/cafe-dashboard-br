@@ -37,11 +37,13 @@ sys.path.insert(0, str(BASE_DIR))
 
 GRUPO_NOME = os.environ.get("MERKAL_NOTAS_GRUPO", "MERKAL NOTAS")
 FILA_DIR = BASE_DIR / "nfe_fila"
+RESPOSTAS_DIR = BASE_DIR / "nfe_respostas"
 STATE_FILE = BASE_DIR / "listener_nfe_state.json"
 PROFILE_DIR = BASE_DIR / "chrome_profile_whatsapp"
 LOGS_DIR = BASE_DIR / "logs"
 
 FILA_DIR.mkdir(exist_ok=True)
+RESPOSTAS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 PADRAO_OK = re.compile(r"^\s*ok\s+(\d{3,})\b", re.IGNORECASE)
@@ -339,6 +341,66 @@ def grupo_esta_aberto(driver):
         return False
 
 
+def enviar_mensagem_no_chat(driver, texto):
+    """Envia texto no chat atualmente aberto (WhatsApp Web)."""
+    # achar input de mensagem
+    selectors = [
+        "div[role='textbox'][contenteditable='true'][aria-label*='ensagem']",
+        "div[role='textbox'][contenteditable='true'][aria-label*='essage']",
+        "div[contenteditable='true'][data-tab='10']",
+        "footer div[contenteditable='true']",
+    ]
+    input_el = None
+    for sel in selectors:
+        try:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for e in els:
+                if e.is_displayed():
+                    input_el = e
+                    break
+            if input_el:
+                break
+        except Exception:
+            continue
+    if not input_el:
+        raise RuntimeError("Campo de mensagem nao encontrado no chat")
+
+    input_el.click()
+    time.sleep(0.3)
+    # WhatsApp nao aceita \n direto (daria send). Usa Shift+Enter pra quebra de linha.
+    linhas = texto.split("\n")
+    for i, linha in enumerate(linhas):
+        input_el.send_keys(linha)
+        if i < len(linhas) - 1:
+            # Shift+Enter = nova linha
+            from selenium.webdriver.common.action_chains import ActionChains
+            ActionChains(driver).key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT).perform()
+    input_el.send_keys(Keys.ENTER)
+    time.sleep(0.5)
+
+
+def processar_respostas(driver):
+    """Le arquivos em nfe_respostas/ e envia cada um no chat. Remove apos envio."""
+    arquivos = sorted(RESPOSTAS_DIR.glob("resp_*.txt"))
+    if not arquivos:
+        return 0
+    enviadas = 0
+    for arq in arquivos[:5]:  # max 5 por ciclo pra nao bloquear
+        try:
+            texto = arq.read_text(encoding="utf-8").strip()
+            if not texto:
+                arq.unlink()
+                continue
+            enviar_mensagem_no_chat(driver, texto)
+            arq.unlink()
+            enviadas += 1
+            logger.info(f"Resposta enviada: {texto[:80]}")
+            time.sleep(1)
+        except Exception as e:
+            logger.warning(f"Falha ao enviar {arq.name}: {e}")
+    return enviadas
+
+
 def ciclo_leitura(driver, processed, nome_grupo):
     # Re-garantir que o grupo esta aberto (WhatsApp as vezes perde o foco)
     if not grupo_esta_aberto(driver):
@@ -418,6 +480,13 @@ def main():
                     n = ciclo_leitura(driver, processed, GRUPO_NOME)
                     if n > 0:
                         logger.info(f"{n} mensagem(ns) enfileirada(s).")
+                    # processar respostas a enviar (do agente NFe)
+                    try:
+                        enviadas = processar_respostas(driver)
+                        if enviadas > 0:
+                            logger.info(f"{enviadas} resposta(s) enviada(s) no grupo.")
+                    except Exception as e:
+                        logger.warning(f"Erro ao processar respostas: {e}")
                 except Exception as e:
                     logger.error(f"Erro no ciclo: {e}")
                 for _ in range(POLL_SECONDS):

@@ -126,14 +126,23 @@ def buscar_dados_nota(numero_nota, id_loja=ID_LOJA):
         conn.close()
 
 
+RESPOSTAS_DIR = BASE_DIR / "nfe_respostas"
+RESPOSTAS_DIR.mkdir(exist_ok=True)
+
+
 def responder_whatsapp(msg):
-    """Envia resposta no grupo Merkal NOTAS (best effort — nao bloqueia se falhar)."""
+    """
+    Escreve resposta num arquivo. O listener_nfe.py (Selenium) le essa pasta a
+    cada ciclo e envia no grupo Merkal NOTAS via a mesma sessao de WhatsApp Web
+    (mais robusto que pyautogui em PC dedicado).
+    """
     try:
-        from enviar_whatsapp import enviar_para_grupo
-        enviar_para_grupo(msg, GRUPO_RESPOSTA)
-        logger.info(f"WhatsApp enviado ({GRUPO_RESPOSTA}): {msg[:80]}")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        arq = RESPOSTAS_DIR / f"resp_{ts}.txt"
+        arq.write_text(msg, encoding="utf-8")
+        logger.info(f"Resposta enfileirada: {arq.name} | {msg[:80]}")
     except Exception as e:
-        logger.warning(f"Falha WhatsApp (segue): {e}")
+        logger.warning(f"Falha ao enfileirar resposta: {e}")
 
 
 # =========================================================
