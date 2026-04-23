@@ -44,6 +44,8 @@
   ],
   "_meta": {
     "recebido_em": "2026-04-23T16:07:55.923614-03:00",
-    "origem": "dashboard_estoque"
+    "origem": "dashboard_estoque",
+    "processado_em": "2026-04-23T16:08:04",
+    "pedidos_criados": "#1764 DIST DE BEBIDAS SAO RAFAEL LTDA (1 itens R$108.67); #1765 DISTRIBUIDORA LAURENCINI LTDA (1 itens R$42.84); #1766 RIO DE JANEIRO REFRESCOS LTDA (1 itens R$32.60)"
   }
 }
