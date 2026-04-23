@@ -1,0 +1,49 @@
+{
+  "data_compra": "2026-04-23",
+  "id_loja": 1,
+  "id_comprador": 1,
+  "id_divisaofornecedor": 0,
+  "id_situacaopedido": 1,
+  "id_tipofretepedido": 0,
+  "id_tipoatendidopedido": 0,
+  "origem": "dashboard_estoque",
+  "pedidos": [
+    {
+      "id_fornecedor": 43,
+      "fornecedor_nome": "DIST DE BEBIDAS SAO RAFAEL LTDA",
+      "itens": [
+        {
+          "id_produto": 4412,
+          "descricao": "REFRIGERANTE GUARANA ANTARCTICA ZERO PET 2L",
+          "quantidade": 16
+        }
+      ]
+    },
+    {
+      "id_fornecedor": 210,
+      "fornecedor_nome": "DISTRIBUIDORA LAURENCINI LTDA",
+      "itens": [
+        {
+          "id_produto": 22513,
+          "descricao": "AGUA MINERAL PEDRA AZUL C/ GAS 1,5L",
+          "quantidade": 12
+        }
+      ]
+    },
+    {
+      "id_fornecedor": 604,
+      "fornecedor_nome": "RIO DE JANEIRO REFRESCOS LTDA",
+      "itens": [
+        {
+          "id_produto": 57538,
+          "descricao": "AGUA MINERAL CRYSTAL C/ GAS 500ML",
+          "quantidade": 22
+        }
+      ]
+    }
+  ],
+  "_meta": {
+    "recebido_em": "2026-04-23T16:07:55.923614-03:00",
+    "origem": "dashboard_estoque"
+  }
+}
