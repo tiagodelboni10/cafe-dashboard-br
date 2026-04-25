@@ -1161,6 +1161,10 @@ def publicar():
             ["git", "commit", "-m", "Atualiza dashboard estoque"],
             cwd=repo_root, check=True, capture_output=True
         )
+        subprocess.run(
+            ["git", "pull", "--rebase", "origin", "master"],
+            cwd=repo_root, check=True
+        )
         subprocess.run(["git", "push"], cwd=repo_root, check=True)
         logger.info("Push realizado! Dashboard disponivel em breve.")
     except subprocess.CalledProcessError as e:
